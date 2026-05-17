@@ -1,0 +1,4 @@
+// Hello World in Sulfur++
+
+Terminal.Out << "Hello, World!";
+Terminal.Out << ps"Sulfur++ {RUNTIME_VERSION} — combust runtime";

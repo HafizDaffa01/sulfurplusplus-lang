@@ -1,0 +1,57 @@
+// Sulfur++ Basics Demo
+
+// ─── Variables ────────────────────────────────────────────────────────────────
+let name: str = "Sulfur++";
+var score: int_32 = 0;
+auto level = 5;
+dyn anything = "hello";
+
+Terminal.Out << ps"Language: {name}";
+Terminal.Out << ps"Level: {level}";
+
+// ─── Types ────────────────────────────────────────────────────────────────────
+let pi: float_64 = PI;
+let isAwesome: bool = true;
+
+Terminal.Out << ps"PI = {pi}";
+Terminal.Out << ps"Awesome: {isAwesome}";
+
+// ─── Nullable ─────────────────────────────────────────────────────────────────
+var user: str? = null;
+let display = user ?? "Guest";
+Terminal.Out << ps"User: {display}";
+
+// ─── Periodic String ──────────────────────────────────────────────────────────
+let items = ["apples", "bananas", "cherries"];
+Terminal.Out << ps"Fruits: {items:join(', ')}";
+
+let greeting = ps"Hello, {name}! Score: {score + 100}";
+Terminal.Out << greeting;
+
+// ─── Collections ──────────────────────────────────────────────────────────────
+var nums: list<int_32> = [1, 2, 3, 4, 5];
+nums.push(6);
+Terminal.Out << ps"Numbers: {nums}";
+Terminal.Out << ps"Sum via reduce... first: {nums[0]}";
+
+// Dict
+var info: dict<str, str> = {"lang": "Sulfur++", "ext": ".sfpp"};
+Terminal.Out << ps"Lang: {info["lang"]}";
+
+// ─── Control Flow ─────────────────────────────────────────────────────────────
+if (score == 0) {
+    Terminal.Out << "Starting score!";
+} else {
+    Terminal.Out << ps"Score: {score}";
+}
+
+for (n in range(1, 4)) {
+    Terminal.Out << ps"  n = {n}";
+}
+
+var i = 0;
+while (i < 3) {
+    score += 10;
+    i += 1;
+}
+Terminal.Out << ps"Final score: {score}";
