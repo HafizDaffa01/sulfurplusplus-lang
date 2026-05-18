@@ -20,20 +20,18 @@ static std::string readFile(const std::string& path) {
 
 static void printBanner() {
     std::cerr
-        << "\033[33m"
-        << "╔═══════════════════════════════════╗\n"
-        << "║  combust — Sulfur++ Runtime v1.0  ║\n"
-        << "╚═══════════════════════════════════╝\n"
-        << "\033[0m";
+        << "+-----------------------------------+\n"
+        << "|  combust - Sulfur++ Runtime v1.0  |\n"
+        << "+-----------------------------------+\n";
 }
 
 static void runREPL(bool debug) {
     printBanner();
-    std::cerr << "Type 'exit' or Ctrl+D to quit.\n\n";
+    std::cerr << "Type 'exit' or Ctrl+C to quit.\n\n";
     Interpreter interp(debug);
     std::string line;
     while (true) {
-        std::cerr << "\033[36msfpp>\033[0m ";
+        std::cerr << "sfpp> ";
         if (!std::getline(std::cin, line)) break;
         if (line == "exit" || line == "quit") break;
         if (line.empty()) continue;
@@ -44,11 +42,11 @@ static void runREPL(bool debug) {
             auto stmts = par.parse();
             interp.run(stmts);
         } catch (SulfurError& e) {
-            std::cerr << "\033[31m[" << e.code << "]";
+            std::cerr << "[" << e.code << "]";
             if (e.line > 0) std::cerr << " line " << e.line;
-            std::cerr << ": " << e.what() << "\033[0m\n";
+            std::cerr << ": " << e.what() << "\n";
         } catch (std::exception& e) {
-            std::cerr << "\033[31mError: " << e.what() << "\033[0m\n";
+            std::cerr << "Error: " << e.what() << "\n";
         }
     }
 }
@@ -66,10 +64,10 @@ static int runFile(const std::string& filename, bool debug, bool watch) {
             return 0;
         } catch (SulfurError& e) {
             std::string loc = e.line > 0 ? " line " + std::to_string(e.line) : "";
-            std::cerr << "\033[31m[" << e.code << "]" << loc << ": " << e.what() << "\033[0m\n";
+            std::cerr << "[" << e.code << "]" << loc << ": " << e.what() << "\n";
             return 1;
         } catch (std::exception& e) {
-            std::cerr << "\033[31mError: " << e.what() << "\033[0m\n";
+            std::cerr << "Error: " << e.what() << "\n";
             return 1;
         }
     };
