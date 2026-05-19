@@ -26,6 +26,8 @@ let WEEK = __builtins__.WEEK;
 
 let RUNTIME_VERSION = __builtins__.RUNTIME_VERSION;
 let LANG_VERSION = __builtins__.LANG_VERSION;
+let FUSE_VERSION = __builtins__.FUSE_VERSION;
+let COMBUST_VERSION = __builtins__.COMBUST_VERSION;
 let BUILD_MODE = __builtins__.BUILD_MODE;
 let DEBUG_MODE = __builtins__.DEBUG_MODE;
 

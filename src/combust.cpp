@@ -7,6 +7,7 @@
 #include <filesystem>
 #include "../include/lexer.hpp"
 #include "../include/parser.hpp"
+#include "../include/version.hpp"
 #include "../include/interpreter.hpp"
 #include "../include/error.hpp"
 #include <iomanip>
@@ -52,6 +53,15 @@ static void runREPL(bool debug) {
     printBanner();
     std::cerr << "Type 'exit' or Ctrl+C to quit.\n\n";
     Interpreter interp(debug);
+    if (debug) {
+        std::cerr << "[DEBUG] Initializing Sulfur++ Debug Mode...\n"
+                  << "[DEBUG]   File Path: <repl>\n"
+                  << "[DEBUG]   Active Flags: --debug\n"
+                  << "[DEBUG]   Sulfur++ Version: " << __SULFUR_VERSION__ << "\n"
+                  << "[DEBUG]   Combust Version:  " << __COMBUST_VERSION__ << "\n"
+                  << "[DEBUG]   Fuse Version:     " << __FUSE_VERSION__ << "\n"
+                  << "[DEBUG] --------------------------------------------------\n";
+    }
 
     // Auto-inject standard functions and constants into global scope in REPL
     interp.injectBuiltinsIntoGlobal();
@@ -86,6 +96,21 @@ static void runREPL(bool debug) {
 
 static int runFile(const std::string& filename, bool debug, bool watch) {
     auto runOnce = [&]() -> int {
+        std::string absPath = filename;
+        if (filename != "<repl>" && !filename.empty()) {
+            try {
+                absPath = std::filesystem::absolute(filename).string();
+            } catch (...) {}
+        }
+        if (debug) {
+            std::cerr << "[DEBUG] Initializing Sulfur++ Debug Mode...\n"
+                      << "[DEBUG]   File Path: " << absPath << "\n"
+                      << "[DEBUG]   Active Flags: --debug" << (watch ? ", --watch" : "") << "\n"
+                      << "[DEBUG]   Sulfur++ Version: " << __SULFUR_VERSION__ << "\n"
+                      << "[DEBUG]   Combust Version:  " << __COMBUST_VERSION__ << "\n"
+                      << "[DEBUG]   Fuse Version:     " << __FUSE_VERSION__ << "\n"
+                      << "[DEBUG] --------------------------------------------------\n";
+        }
         try {
             auto start = std::chrono::high_resolution_clock::now();
             std::string src = readFile(filename);
@@ -94,7 +119,7 @@ static int runFile(const std::string& filename, bool debug, bool watch) {
             Parser par(std::move(tokens));
             auto stmts = par.parse();
             Interpreter interp(debug);
-            interp.run(stmts, filename);
+            interp.run(stmts, absPath);
             if (debug) {
                 auto end = std::chrono::high_resolution_clock::now();
                 double duration = std::chrono::duration<double, std::milli>(end - start).count();
@@ -146,7 +171,7 @@ int main(int argc, char* argv[]) {
         if (arg == "--debug" || arg == "-d") debug = true;
         else if (arg == "--watch" || arg == "-w") watch = true;
         else if (arg == "--version" || arg == "-v") {
-            std::cout << "combust 1.0.0 (Sulfur++ Runtime)\n";
+            std::cout << "combust " << __COMBUST_VERSION__ << " (Sulfur++ Runtime)\n";
             return 0;
         }
         else if (arg == "--help" || arg == "-h") {

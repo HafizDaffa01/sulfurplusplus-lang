@@ -3,6 +3,7 @@
 #include <sstream>
 #include <string>
 #include <filesystem>
+#include "../include/version.hpp"
 #include <vector>
 #include <cstdlib>
 #include <algorithm>
@@ -611,7 +612,7 @@ int main(int argc, char* argv[]) {
         printHelp();
     }
     else if (cmd == "--version" || cmd == "-v") {
-        std::cout << "fuse 1.0.0 (Sulfur++ Package Manager)\n";
+        std::cout << "fuse " << __FUSE_VERSION__ << " (Sulfur++ Package Manager)\n";
     }
     else if (cmd == "init") {
         handleInit();

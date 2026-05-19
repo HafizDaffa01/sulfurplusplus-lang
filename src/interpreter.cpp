@@ -2,15 +2,20 @@
 #include "../include/error.hpp"
 #include "../include/lexer.hpp"
 #include "../include/parser.hpp"
+#include "../include/version.hpp"
 #include <algorithm>
 #include <unordered_set>
 #include <fstream>
+#include <filesystem>
 #include <sstream>
 #include <iostream>
 #include <cmath>
 #include <iostream>
 #include <thread>
 #include <chrono>
+
+
+
 // ─── Constructor
 // ──────────────────────────────────────────────────────────────
 
@@ -26,7 +31,13 @@ Interpreter::Interpreter(bool debugMode)
 // ──────────────────────────────────────────────────────────────────────
 
 void Interpreter::run(const std::vector<StmtPtr> &stmts, const std::string& filepath) {
-  fileStack_.push_back(filepath);
+  std::string absPath = filepath;
+  if (filepath != "<repl>" && !filepath.empty()) {
+      try {
+          absPath = std::filesystem::absolute(filepath).string();
+      } catch (...) {}
+  }
+  fileStack_.push_back(absPath);
   deferStack_.push_back({});
   try {
     for (auto &s : stmts)
@@ -406,7 +417,14 @@ void Interpreter::execImport(const ImportStmt &s) {
   auto moduleEnv = std::make_shared<Environment>(globalEnv_);
   auto savedEnv = currentEnv_;
   currentEnv_ = moduleEnv;
-  fileStack_.push_back(path);
+
+  std::string absPath = path;
+  if (path != "<repl>" && !path.empty()) {
+      try {
+          absPath = std::filesystem::absolute(path).string();
+      } catch (...) {}
+  }
+  fileStack_.push_back(absPath);
 
   try {
     for (auto& stmt : stmts) {
@@ -1807,8 +1825,10 @@ void Interpreter::registerBuiltins() {
   builtins->set("DAY", makeInt(86400));
   builtins->set("WEEK", makeInt(604800));
 
-  builtins->set("RUNTIME_VERSION", makeStr("1.0.0"));
-  builtins->set("LANG_VERSION", makeStr("1.0.0"));
+  builtins->set("RUNTIME_VERSION", makeStr(__RUNTIME_VERSION__));
+  builtins->set("LANG_VERSION", makeStr(__LANG_VERSION__));
+  builtins->set("FUSE_VERSION", makeStr(__FUSE_VERSION__));
+  builtins->set("COMBUST_VERSION", makeStr(__COMBUST_VERSION__));
   builtins->set("BUILD_MODE", makeStr("debug"));
   builtins->set("DEBUG_MODE", makeBool(false));
 
