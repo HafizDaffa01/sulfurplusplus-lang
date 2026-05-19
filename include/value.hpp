@@ -130,6 +130,8 @@ struct Value {
     std::shared_ptr<ListValue> asList() const;
     std::shared_ptr<SetValue>  asSet()  const;
     std::shared_ptr<DictValue> asDict() const;
+    bool isPtr() const { return std::holds_alternative<std::shared_ptr<PtrValue>>(data); }
+    std::shared_ptr<PtrValue> asPtr() const;
 
     bool truthy() const;
     std::string toString() const;
@@ -151,3 +153,8 @@ inline ValuePtr makeClassDef(std::shared_ptr<ClassDef> c) { return std::make_sha
 inline ValuePtr makeClassInst(std::shared_ptr<ClassInstance> ci) { return std::make_shared<Value>(ci); }
 inline ValuePtr makeStructDef(std::shared_ptr<StructDef> sd) { return std::make_shared<Value>(sd); }
 inline ValuePtr makeStructInst(std::shared_ptr<StructInstance> si) { return std::make_shared<Value>(si); }
+inline ValuePtr makePtr(ValuePtr *target) {
+  auto pv = std::make_shared<PtrValue>();
+  pv->target = target;
+  return std::make_shared<Value>(pv);
+}

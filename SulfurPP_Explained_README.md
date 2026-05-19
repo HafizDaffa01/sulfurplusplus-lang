@@ -1,4 +1,3 @@
-
 # Sulfur++ (`.sfpp`)
 
 > Reactive systems language with modern developer ergonomics.
@@ -7,20 +6,20 @@
 
 # What is Sulfur++?
 
-Sulfur++ adalah bahasa pemrograman general-purpose modern yang:
+Sulfur++ is a modern general-purpose programming language that is:
 - static-first
 - interpreted
 - systems-oriented
 - reactive-ready
-- beginner friendly
-- memiliki syntax modern
-- mendukung dynamic typing opsional
+- beginner-friendly
+- possesses modern syntax
+- supports optional dynamic typing
 
-Sulfur++ dibuat untuk menggabungkan:
-- performa dan struktur ala C++
-- fleksibilitas ala Python
-- kenyamanan ala JavaScript/TypeScript
-- usability ala PHP
+Sulfur++ is built to combine:
+- performance and structure like C++
+- flexibility like Python
+- ergonomics like JavaScript/TypeScript
+- usability like PHP
 
 ---
 
@@ -37,15 +36,15 @@ Sulfur++ dibuat untuk menggabungkan:
 
 # Runtime
 
-Runtime utama Sulfur++ bernama `combust`.
+The main runtime of Sulfur++ is named `combust`.
 
-Digunakan untuk:
-- menjalankan file `.sfpp`
+Used for:
+- running `.sfpp` files
 - debugging
 - hot reload
 - runtime execution
 
-## Menjalankan Program
+## Executing a Program
 
 ```bash
 combust main.sfpp
@@ -57,10 +56,10 @@ combust main.sfpp
 combust main.sfpp --debug
 ```
 
-Debug mode digunakan untuk:
-- melihat error detail
-- runtime trace
-- debugging internal
+Debug mode is used to:
+- view detailed errors
+- trace runtime execution
+- perform internal debugging
 
 ## Watch Mode
 
@@ -68,20 +67,20 @@ Debug mode digunakan untuk:
 combust main.sfpp --watch
 ```
 
-Watch mode akan:
-- memonitor perubahan file
-- auto restart runtime
+Watch mode will:
+- monitor file changes
+- auto-restart the runtime
 
 ---
 
 # Package Manager (`fuse`)
 
-Sulfur++ memiliki package manager bernama `fuse`.
+Sulfur++ has a package manager named `fuse`.
 
-Digunakan untuk:
-- install package
-- remove package
-- manage dependency
+Used to:
+- install packages
+- remove packages
+- manage dependencies
 
 ## Init Project
 
@@ -95,9 +94,9 @@ fuse init
 fuse add asep/inilibrary
 ```
 
-Artinya:
-- mengambil repository `inilibrary`
-- dari user `asep`
+Meaning:
+- fetches the `inilibrary` repository
+- from the user `asep`
 
 ## Remove Package
 
@@ -115,11 +114,11 @@ fuse rem asep/inilibrary
 import @asep/mathlib as math;
 ```
 
-Penjelasan:
+Explanation:
 - `@asep/mathlib` = package source
 - `as math` = alias namespace
 
-Penggunaan:
+Usage:
 
 ```sfpp
 math.add();
@@ -129,14 +128,14 @@ math.add();
 
 # Import Flags
 
-Sulfur++ memiliki import capability system.
+Sulfur++ has an import capability system.
 
-Digunakan untuk:
-- mengubah behavior module
-- runtime capability
-- namespace behavior
+Used to:
+- modify module behavior
+- manage runtime capabilities
+- define namespace behavior
 
-## Contoh
+## Example
 
 ```sfpp
 import @asep/mathlib as math
@@ -147,15 +146,15 @@ import @asep/mathlib as math
 
 # Import Flag List
 
-| Flag | Penjelasan |
+| Flag | Explanation |
 |---|---|
-| FULL | import semua public export |
-| NOLIBNAME | menghapus namespace library |
+| FULL | import all public exports |
+| NOLIBNAME | remove the library namespace |
 | RAW | low-level/raw import |
 | REACTIVE | reactive binding |
-| HOTRELOAD | auto reload module |
+| HOTRELOAD | auto-reload module |
 | SAFE | strict runtime safety |
-| UNSAFE | bypass safety restriction |
+| UNSAFE | bypass safety restrictions |
 | TRACE | runtime tracing |
 | CACHE | cache module |
 | INLINE | inline optimization |
@@ -164,9 +163,9 @@ import @asep/mathlib as math
 
 # Type System
 
-Sulfur++ menggunakan static typing sebagai default.
+Sulfur++ uses static typing by default.
 
-Namun dapat memakai dynamic typing menggunakan `dyn`.
+However, you can use dynamic typing using `dyn`.
 
 ---
 
@@ -174,7 +173,7 @@ Namun dapat memakai dynamic typing menggunakan `dyn`.
 
 ## Signed Integer
 
-Digunakan untuk angka positif dan negatif.
+Used for positive and negative numbers.
 
 ```txt
 int_8
@@ -187,7 +186,7 @@ int_64
 
 # Unsigned Integer
 
-Hanya angka positif.
+Positive numbers only.
 
 ```txt
 uint_8
@@ -200,7 +199,7 @@ uint_64
 
 # Floating Point
 
-Digunakan untuk angka desimal.
+Used for decimal numbers.
 
 ```txt
 float_32
@@ -221,14 +220,14 @@ void
 null
 ```
 
-| Type | Penjelasan |
+| Type | Explanation |
 |---|---|
 | bool | true / false |
 | char | single character |
 | str | string |
 | dyn | runtime dynamic type |
 | auto | inferred static type |
-| void | tidak mengembalikan nilai |
+| void | does not return a value |
 | null | empty/null value |
 
 ---
@@ -237,7 +236,7 @@ null
 
 ## LIST
 
-List adalah collection berurutan.
+List is an ordered collection.
 
 ```sfpp
 list<int_32> numbers;
@@ -247,7 +246,7 @@ list<int_32> numbers;
 
 ## SET
 
-Set adalah collection unik tanpa duplicate.
+Set is a collection of unique elements without duplicates.
 
 ```sfpp
 set<str> usernames;
@@ -257,7 +256,7 @@ set<str> usernames;
 
 ## DICT
 
-Dictionary menyimpan key-value pair.
+Dictionary stores key-value pairs.
 
 ```sfpp
 dict<str, int_32> scores;
@@ -267,7 +266,7 @@ dict<str, int_32> scores;
 
 ## MATRIX
 
-Matrix digunakan untuk data multidimensional.
+Matrix is used for multidimensional data.
 
 ```sfpp
 matrix<float_32> transform;
@@ -277,7 +276,7 @@ matrix<float_32> transform;
 
 # Nullable System
 
-Sulfur++ mendukung nullable type.
+Sulfur++ supports nullable types.
 
 ## Nullable Type
 
@@ -286,8 +285,8 @@ str?
 Player?
 ```
 
-Artinya:
-- value boleh null
+Meaning:
+- the value can be null
 
 ---
 
@@ -297,8 +296,8 @@ Artinya:
 user?.name
 ```
 
-Jika `user` null:
-- tidak crash
+If `user` is null:
+- does not crash
 
 ---
 
@@ -308,8 +307,8 @@ Jika `user` null:
 user ?? "Guest"
 ```
 
-Jika `user` null:
-- gunakan `"Guest"`
+If `user` is null:
+- falls back to `"Guest"`
 
 ---
 
@@ -321,7 +320,7 @@ Jika `user` null:
 let username: str = "Daffa";
 ```
 
-Tidak bisa diubah.
+Cannot be modified.
 
 ---
 
@@ -331,7 +330,7 @@ Tidak bisa diubah.
 var hp: int_32 = 100;
 ```
 
-Bisa diubah.
+Can be modified.
 
 ---
 
@@ -341,9 +340,9 @@ Bisa diubah.
 auto score = 999;
 ```
 
-Type otomatis diinfer.
+Type is automatically inferred.
 
-Tetapi tetap static type.
+But remains a static type.
 
 ---
 
@@ -353,13 +352,13 @@ Tetapi tetap static type.
 dyn anything = "hello";
 ```
 
-Type bisa berubah saat runtime.
+Type can change at runtime.
 
 ---
 
 # OOP System
 
-Sulfur++ mendukung:
+Sulfur++ supports:
 - class
 - struct
 - interface
@@ -374,7 +373,7 @@ class Player {
 }
 ```
 
-Digunakan untuk object-oriented programming.
+Used for object-oriented programming.
 
 ---
 
@@ -387,7 +386,7 @@ struct Vec2 {
 }
 ```
 
-Struct lebih lightweight dibanding class.
+Struct is more lightweight than class.
 
 ---
 
@@ -399,15 +398,15 @@ interface Drawable {
 }
 ```
 
-Digunakan untuk contract/interface abstraction.
+Used for contract/interface abstraction.
 
 ---
 
 # Ordered Lifecycle Constructor System
 
-Sulfur++ menggunakan ordered lifecycle system.
+Sulfur++ uses an ordered lifecycle system.
 
-Bukan constructor tradisional biasa.
+Rather than typical traditional constructors.
 
 ---
 
@@ -418,9 +417,9 @@ Bukan constructor tradisional biasa.
 +2>connect
 ```
 
-Artinya:
-- jalankan `loadDefaults`
-- lalu `connect`
+Meaning:
+- run `loadDefaults`
+- then `connect`
 
 ---
 
@@ -430,17 +429,17 @@ Artinya:
 ~1>cleanup
 ```
 
-Digunakan saat object dihancurkan.
+Invoked when the object is destroyed.
 
 ---
 
 # Pipeline System
 
-Pipeline system digunakan untuk:
-- chaining function
-- readable processing flow
+Pipeline system is used for:
+- chaining functions
+- creating a readable data processing flow
 
-## Contoh
+## Example
 
 ```sfpp
 data
@@ -459,7 +458,7 @@ save(parse(clean(data)))
 
 # Reactive System
 
-Reactive system adalah salah satu core feature Sulfur++.
+The reactive watch system is one of the core features of Sulfur++.
 
 ---
 
@@ -469,7 +468,7 @@ Reactive system adalah salah satu core feature Sulfur++.
 reactive hp = 100;
 ```
 
-Value dapat dipantau realtime.
+The value can be monitored in real-time.
 
 ---
 
@@ -481,7 +480,7 @@ watch hp {
 }
 ```
 
-Berjalan saat value berubah.
+Executes automatically when the value changes.
 
 ---
 
@@ -499,7 +498,7 @@ Reactive conditional system.
 
 # Signal System
 
-Digunakan untuk event system.
+Used for the event system.
 
 ---
 
@@ -531,10 +530,10 @@ on OnDamage {
 
 # Property System
 
-Property system digunakan untuk:
+The property system is used for:
 - runtime metadata
-- runtime behavior
-- object capability
+- runtime behavior configuration
+- object capabilities
 
 ---
 
@@ -589,20 +588,18 @@ PROP_INTERNAL
 PROP_EXPERIMENTAL
 PROP_DEPRECATED
 PROP_LOCKED
-PROP_OBSERVABLE
+^^PROP_OBSERVABLE
 ```
 
 ---
 
 # Periodic String System (`ps""`)
 
-Periodic String adalah advanced string system.
+Periodic String is an advanced string interpolation system.
 
-Terinspirasi dari:
+Inspired by:
 - Python f-string
 - JS template literal
-
-Tetapi lebih powerful.
 
 ---
 
@@ -656,7 +653,7 @@ ps"{name -> upper() -> trim()}"
 
 # Streams
 
-Sulfur++ memiliki high-level stream API.
+Sulfur++ possesses a high-level stream API.
 
 ---
 
@@ -689,9 +686,19 @@ stdwarn
 
 ---
 
+# Member Access & Scope Operators
+
+| Operator | Used for | Example | Needs object? |
+|---|---|---|---|
+| `.` | Regular objects (non-pointer) | `obj.name` | ✅ Yes (instance) |
+| `->` | Pointer to objects | `ptr->name` | ✅ Yes (instance via pointer) |
+| `::` | Class/namespace (static / Scope Resolution Operator - SRO) | `Class::staticVar` | ❌ No |
+
+---
+
 # Memory & Safety
 
-Sulfur++ tetap mendukung low-level capability.
+Sulfur++ continues to support low-level system capabilities.
 
 ---
 
@@ -711,7 +718,7 @@ unsafe {
 }
 ```
 
-Digunakan untuk bypass safety system.
+Used to bypass the safety system bounds.
 
 ---
 
@@ -723,13 +730,13 @@ defer {
 }
 ```
 
-Akan berjalan otomatis saat keluar scope.
+Runs automatically when exiting the scope.
 
 ---
 
 # Constants
 
-Sulfur++ memiliki banyak built-in constants.
+Sulfur++ has many built-in constants.
 
 ---
 
@@ -792,7 +799,7 @@ E
 W
 ```
 
-| Severity | Penjelasan |
+| Severity | Explanation |
 |---|---|
 | FE | fatal error |
 | E | normal error |
@@ -803,22 +810,24 @@ W
 # Example Error
 
 ```txt
-E_TYPE_001
+E_TYPE_406
 E_IMPORT_409
-FE_VM_001
-W_UNUSED_001
+FE_VM_500
+E_LEX_400
+E_NAME_404
+E_PARSE_400
 ```
 
 ---
 
 # Tools
 
-| Tool | Fungsi |
+| Tool | Function |
 |---|---|
 | combust | runtime/interpreter |
 | fuse | package manager |
-| sfmt | formatter |
-| sflint | linter |
+| sfmt | code formatter |
+| sflint | code linter |
 
 ---
 

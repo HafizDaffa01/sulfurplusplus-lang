@@ -1,0 +1,36 @@
+export this as std/builtin;
+
+let input = __builtins__.input;
+let delay = __builtins__.delay;
+let delayMilliseconds = __builtins__.delayMilliseconds;
+let delayMicroseconds = __builtins__.delayMicroseconds;
+let typeOf = __builtins__.typeOf;
+let type = __builtins__.type;
+let toStr = __builtins__.toStr;
+let toInt = __builtins__.toInt;
+let toFloat = __builtins__.toFloat;
+let toBool = __builtins__.toBool;
+let len = __builtins__.len;
+let range = __builtins__.range;
+let exit = __builtins__.exit;
+let assert = __builtins__.assert;
+let ord = __builtins__.ord;
+let chr = __builtins__.chr;
+let read = __builtins__.read;
+
+let SECOND = __builtins__.SECOND;
+let MINUTE = __builtins__.MINUTE;
+let HOUR = __builtins__.HOUR;
+let DAY = __builtins__.DAY;
+let WEEK = __builtins__.WEEK;
+
+let RUNTIME_VERSION = __builtins__.RUNTIME_VERSION;
+let LANG_VERSION = __builtins__.LANG_VERSION;
+let BUILD_MODE = __builtins__.BUILD_MODE;
+let DEBUG_MODE = __builtins__.DEBUG_MODE;
+
+let Terminal = __builtins__.Terminal;
+let stdout = __builtins__.stdout;
+let stderr = __builtins__.stderr;
+let stdin = __builtins__.stdin;
+let stdwarn = __builtins__.stdwarn;

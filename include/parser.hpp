@@ -1,6 +1,5 @@
 #pragma once
 #include <vector>
-#include <memory>
 #include "token.hpp"
 #include "ast.hpp"
 
@@ -33,9 +32,9 @@ private:
     StmtPtr parseWhile();
     StmtPtr parseFor();
     StmtPtr parseReturn();
-    StmtPtr parseWatch();
-    StmtPtr parseOn();
+
     StmtPtr parseImport();
+    StmtPtr parseExport();
     StmtPtr parseUnsafe();
     StmtPtr parseDefer();
     StmtPtr parseExprStmt();
@@ -50,6 +49,7 @@ private:
     ExprPtr parseEquality();
     ExprPtr parseComparison();
     ExprPtr parseAddSub();
+    ExprPtr parseShift();
     ExprPtr parseMulDiv();
     ExprPtr parseUnary();
     ExprPtr parsePipeline();

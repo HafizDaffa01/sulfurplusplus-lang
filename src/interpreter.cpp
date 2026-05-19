@@ -1,9 +1,16 @@
 #include "../include/interpreter.hpp"
 #include "../include/error.hpp"
+#include "../include/lexer.hpp"
+#include "../include/parser.hpp"
 #include <algorithm>
+#include <unordered_set>
+#include <fstream>
+#include <sstream>
+#include <iostream>
 #include <cmath>
 #include <iostream>
-
+#include <thread>
+#include <chrono>
 // ─── Constructor
 // ──────────────────────────────────────────────────────────────
 
@@ -13,6 +20,7 @@ Interpreter::Interpreter(bool debugMode)
   globalEnv_ = std::make_shared<Environment>();
   currentEnv_ = globalEnv_;
   registerBuiltins();
+  injectBuiltinsIntoGlobal();
 }
 
 // ─── run
@@ -26,11 +34,24 @@ void Interpreter::run(const std::vector<StmtPtr> &stmts) {
   } catch (ReturnSignal &) {
     // top-level return is ok
   }
-  // Execute deferred blocks in LIFO order
+// Execute deferred blocks in LIFO order
   for (auto it = deferStack_.back().rbegin(); it != deferStack_.back().rend();
        ++it)
     execStmt(**it);
   deferStack_.pop_back();
+}
+
+void Interpreter::injectBuiltinsIntoGlobal() {
+    auto builtinsVal = globalEnv_->get("__builtins__", -1);
+    if (builtinsVal && builtinsVal->isDict()) {
+        for (const auto& kv : builtinsVal->asDict()->pairs) {
+            if (kv.first->isStr()) {
+                globalEnv_->define(kv.first->asStr(), kv.second, false);
+            } else {
+                globalEnv_->define(kv.first->toString(), kv.second, false);
+            }
+        }
+    }
 }
 
 // ─── Environment helpers
@@ -61,42 +82,7 @@ std::string Interpreter::readLine() {
   return line;
 }
 
-// ─── Reactive notification
-// ────────────────────────────────────────────────────
 
-void Interpreter::notifyWatchers(const std::string &varName, ValuePtr /*newVal*/) {
-  // Walk up environment chain looking for watchers on this var
-  auto *env = currentEnv_.get();
-  while (env) {
-    for (auto &w : env->watches()) {
-      if (w.varName != varName)
-        continue;
-      // If condition, evaluate it
-      if (w.condExpr) {
-        auto savedEnv = currentEnv_;
-        currentEnv_ = w.scope;
-        bool fired = false;
-        try {
-          auto condVal = evalExpr(*static_cast<Expr *>(w.condExpr));
-          fired = condVal->truthy();
-        } catch (...) {
-        }
-        currentEnv_ = savedEnv;
-        if (!fired)
-          continue;
-      }
-      // Execute the watch body
-      auto savedEnv = currentEnv_;
-      currentEnv_ = w.scope;
-      try {
-        execStmt(*static_cast<Stmt *>(w.body));
-      } catch (ReturnSignal &) {
-      }
-      currentEnv_ = savedEnv;
-    }
-    env = env->parent().get();
-  }
-}
 
 // ─── execStmt
 // ─────────────────────────────────────────────────────────────────
@@ -133,16 +119,11 @@ void Interpreter::execStmt(const Stmt &s) {
           evalExpr(*node.expr);
         else if constexpr (std::is_same_v<T, StreamOutStmt>)
           execStreamOut(node);
-        else if constexpr (std::is_same_v<T, WatchStmt>)
-          execWatch(node);
-        else if constexpr (std::is_same_v<T, SignalDeclStmt>)
-          execSignalDecl(node);
-        else if constexpr (std::is_same_v<T, EmitStmt>)
-          execEmit(node);
-        else if constexpr (std::is_same_v<T, OnStmt>)
-          execOn(node);
+
         else if constexpr (std::is_same_v<T, ImportStmt>)
           execImport(node);
+        else if constexpr (std::is_same_v<T, ExportStmt>)
+          execExport(node);
         else if constexpr (std::is_same_v<T, UnsafeStmt>)
           execUnsafe(node);
         else if constexpr (std::is_same_v<T, DeferStmt>)
@@ -188,8 +169,7 @@ void Interpreter::execVarDecl(const VarDeclStmt &s) {
     val = evalExpr(*s.initializer);
 
   bool mutable_ = (s.keyword != "let");
-  bool reactive = (s.keyword == "reactive");
-  currentEnv_->define(s.name, val, mutable_, reactive);
+  currentEnv_->define(s.name, val, mutable_);
 }
 
 void Interpreter::execFnDecl(const FnDeclStmt &s) {
@@ -249,28 +229,40 @@ void Interpreter::execInterfaceDecl(const InterfaceDeclStmt &s) {
 
 void Interpreter::execIf(const IfStmt &s) {
   auto cond = evalExpr(*s.cond);
-  if (cond->truthy())
+  if (cond->truthy()) {
+    trace("If: condition true, executing thenBranch");
     execStmt(*s.thenBranch);
-  else if (s.elseBranch)
+  }
+  else if (s.elseBranch) {
+    trace("If: condition false, executing elseBranch");
     execStmt(*s.elseBranch);
+  } else {
+    trace("If: condition false");
+  }
 }
 
 void Interpreter::execWhile(const WhileStmt &s) {
+  trace("While: starting loop");
   while (true) {
     auto cond = evalExpr(*s.cond);
-    if (!cond->truthy())
+    if (!cond->truthy()) {
+      trace("While: condition false, breaking");
       break;
+    }
     try {
       execStmt(*s.body);
     } catch (BreakSignal &) {
+      trace("While: caught break");
       break;
     } catch (ContinueSignal &) {
+      trace("While: caught continue");
       continue;
     }
   }
 }
 
 void Interpreter::execFor(const ForStmt &s) {
+  trace("For: evaluating iterable");
   auto iterable = evalExpr(*s.iterable);
   auto doBody = [&](ValuePtr item) {
     pushEnv();
@@ -278,9 +270,11 @@ void Interpreter::execFor(const ForStmt &s) {
     try {
       execStmt(*s.body);
     } catch (BreakSignal &) {
+      trace("For: caught break");
       popEnv();
       return false;
     } catch (ContinueSignal &) {
+      trace("For: caught continue");
     }
     popEnv();
     return true;
@@ -312,6 +306,7 @@ void Interpreter::execReturn(const ReturnStmt &s) {
   ValuePtr val = makeNull();
   if (s.value)
     val = evalExpr(*s.value);
+  trace("Return: returning " + val->typeName());
   throw ReturnSignal{val};
 }
 
@@ -320,47 +315,111 @@ void Interpreter::execStreamOut(const StreamOutStmt &s) {
   print(val->toString());
 }
 
-void Interpreter::execWatch(const WatchStmt &s) {
-  WatchEntry entry;
-  entry.varName = s.varName;
-  entry.condExpr = s.cond ? (void *)s.cond.get() : nullptr;
-  entry.body = (void *)s.body.get();
-  entry.scope = currentEnv_;
-  currentEnv_->addWatch(std::move(entry));
-}
 
-void Interpreter::execSignalDecl(const SignalDeclStmt &s) {
-  currentEnv_->declareSignal(s.name);
-}
 
-void Interpreter::execEmit(const EmitStmt &s) {
-  auto *sig = currentEnv_->findSignal(s.name);
-  if (!sig)
-    throw RuntimeError("Signal '" + s.name + "' is not declared", s.line);
-  for (auto &[body, scope] : sig->handlers) {
-    auto savedEnv = currentEnv_;
-    currentEnv_ = scope;
-    try {
-      execStmt(*static_cast<Stmt *>(body));
-    } catch (ReturnSignal &) {
+void Interpreter::execImport(const ImportStmt &s) {
+  trace("Import: " + s.pkg + " as " + s.alias);
+
+  std::string alias = s.alias;
+  if (alias.empty()) {
+    size_t slash = s.pkg.find_last_of('/');
+    if (slash != std::string::npos) {
+      alias = s.pkg.substr(slash + 1);
+    } else {
+      alias = s.pkg;
+      // strip leading @ if present
+      if (!alias.empty() && alias[0] == '@') alias = alias.substr(1);
     }
+  }
+
+  // Normalize pkg key: strip leading @ for module cache lookup
+  std::string pkgKey = s.pkg;
+  if (!pkgKey.empty() && pkgKey[0] == '@') pkgKey = pkgKey.substr(1);
+
+  // Check if module is already cached (try both with and without @)
+  if (exportedModules_.count(s.pkg)) {
+    currentEnv_->define(alias, exportedModules_[s.pkg], true);
+    return;
+  }
+  if (exportedModules_.count(pkgKey)) {
+    currentEnv_->define(alias, exportedModules_[pkgKey], true);
+    return;
+  }
+
+
+  std::string path = s.pkg;
+  if (path.length() < 5 || path.substr(path.length() - 5) != ".sfpp") {
+    path += ".sfpp";
+  }
+
+  // Try direct path first, then packages/ directory
+  std::ifstream f(path);
+  if (!f) {
+    // Try packages/<pkg>.sfpp
+    std::string pkgPath = "packages/" + path;
+    f.open(pkgPath);
+    if (f) {
+      path = pkgPath;
+    } else {
+      // Try packages/<user>/<repo>.sfpp for @user/repo style
+      std::string stripped = s.pkg;
+      if (!stripped.empty() && stripped[0] == '@') stripped = stripped.substr(1);
+      std::string altPath = "packages/" + stripped + ".sfpp";
+      f.open(altPath);
+      if (f) {
+        path = altPath;
+      } else {
+        throw RuntimeError("Cannot open module '" + s.pkg + "'. Tried: " + path + ", packages/" + path + ", " + altPath, s.line);
+      }
+    }
+  }
+
+  std::ostringstream ss;
+  ss << f.rdbuf();
+  std::string src = ss.str();
+
+  Lexer lex(src, path);
+  auto tokens = lex.tokenize();
+  Parser par(std::move(tokens));
+  auto stmts = par.parse();
+
+  auto moduleEnv = std::make_shared<Environment>(globalEnv_);
+  auto savedEnv = currentEnv_;
+  currentEnv_ = moduleEnv;
+
+  try {
+    for (auto& stmt : stmts) {
+      execStmt(*stmt);
+    }
+  } catch (...) {
     currentEnv_ = savedEnv;
+    throw;
+  }
+  currentEnv_ = savedEnv;
+
+  auto ns = std::make_shared<DictValue>();
+  for (const auto& kv : moduleEnv->vars()) {
+    if (kv.first != "__export_alias__") {
+      ns->set(kv.first, kv.second.value);
+    }
+  }
+
+  ValuePtr dictVal = makeDict(ns);
+  currentEnv_->define(alias, dictVal, true);
+  
+  if (moduleEnv->hasLocal("__export_alias__")) {
+      std::string exportAlias = moduleEnv->get("__export_alias__", 0)->asStr();
+      exportedModules_[exportAlias] = dictVal;
   }
 }
 
-void Interpreter::execOn(const OnStmt &s) {
-  currentEnv_->addSignalHandler(s.signal, (void *)s.body.get(), currentEnv_);
-}
-
-void Interpreter::execImport(const ImportStmt &s) {
-  // Basic built-in package handling
-  // In a real implementation, this would load .sfpp files from package paths
-  trace("Import: " + s.pkg + " as " + s.alias);
-
-  // Register a namespace object (dict) for the import alias
-  auto ns = std::make_shared<DictValue>();
-  std::string alias = s.alias.empty() ? s.pkg : s.alias;
-  currentEnv_->define(alias, makeDict(ns), true);
+void Interpreter::execExport(const ExportStmt &s) {
+  auto env = currentEnv_;
+  while (env && env->parent() != globalEnv_ && env->parent() != nullptr) {
+      env = env->parent();
+  }
+  if (!env) env = currentEnv_;
+  env->define("__export_alias__", makeStr(s.alias), true);
 }
 
 void Interpreter::execUnsafe(const UnsafeStmt &s) {
@@ -431,11 +490,45 @@ ValuePtr Interpreter::evalExpr(const Expr &e) {
           return makeFn(fn);
         }
         if constexpr (std::is_same_v<T, AddrOfExpr>) {
-          // Basic pointer support — return the value itself for simplicity
-          return evalExpr(*node.operand);
+          if (auto* ident = std::get_if<IdentExpr>(&node.operand->data)) {
+            auto addr = currentEnv_->getAddr(ident->name);
+            if (!addr) {
+              throw MemoryError("Undefined variable address: " + ident->name, node.line);
+            }
+            auto pv = std::make_shared<PtrValue>();
+            pv->target = addr;
+            return std::make_shared<Value>(pv);
+          } else if (auto* mem = std::get_if<MemberExpr>(&node.operand->data)) {
+            auto obj = evalExpr(*mem->object);
+            if (obj->isStructInst()) {
+              auto inst = obj->asStructInst();
+              return makePtr(&inst->fields[mem->member]);
+            } else if (obj->isClassInst()) {
+              auto inst = obj->asClassInst();
+              auto addr = inst->members->getAddr(mem->member);
+              if (addr) {
+                auto pv = std::make_shared<PtrValue>();
+                pv->target = addr;
+                return std::make_shared<Value>(pv);
+              }
+            }
+            throw MemoryError("Cannot take address of member '" + mem->member + "'", node.line);
+          }
+          throw MemoryError("Cannot take address of rvalue", node.line);
         }
         if constexpr (std::is_same_v<T, DerefExpr>) {
-          return evalExpr(*node.operand);
+          auto obj = evalExpr(*node.operand);
+          if (!obj->isPtr()) {
+            throw TypeError("Cannot dereference non-pointer of type " + obj->typeName(), node.line);
+          }
+          auto target = obj->asPtr()->target;
+          if (!target || !(*target)) {
+            throw MemoryError("Null pointer dereference", node.line);
+          }
+          return *target;
+        }
+        if constexpr (std::is_same_v<T, DeleteExpr>) {
+          return evalDelete(node);
         }
         return makeNull();
       },
@@ -537,11 +630,11 @@ ValuePtr Interpreter::evalBinary(const BinaryExpr &e) {
     std::string stream = left->toString();
     std::string msg = right->toString();
     if (stream == "<Terminal.Out>" || stream == "<stdout>") {
-      print(msg + "\n");
+      print(msg);
     } else if (stream == "<Terminal.Err>" || stream == "<stderr>") {
-      printErr(msg + "\n");
+      printErr(msg);
     } else if (stream == "<Terminal.Warn>") {
-      printErr("[WARN] " + msg + "\n");
+      printErr("[WARN] " + msg);
     } else {
       print(msg);
     }
@@ -600,7 +693,7 @@ ValuePtr Interpreter::applyBinaryArith(const std::string &op, ValuePtr l,
       return makeFloat(a * b);
     if (op == "/") {
       if (b == 0.0)
-        throw RuntimeError("Division by zero", line);
+        throw MathError("Division by zero", line);
       return makeFloat(a / b);
     }
     if (op == "%")
@@ -617,12 +710,12 @@ ValuePtr Interpreter::applyBinaryArith(const std::string &op, ValuePtr l,
       return makeInt(a * b);
     if (op == "/") {
       if (b == 0)
-        throw RuntimeError("Division by zero", line);
+        throw MathError("Division by zero", line);
       return makeInt(a / b);
     }
     if (op == "%") {
       if (b == 0)
-        throw RuntimeError("Modulo by zero", line);
+        throw MathError("Modulo by zero", line);
       return makeInt(a % b);
     }
     if (op == "**")
@@ -700,20 +793,7 @@ ValuePtr Interpreter::evalAssign(const AssignExpr &e) {
 
   // Assign to target
   if (auto *id = std::get_if<IdentExpr>(&e.target->data)) {
-    // Check if reactive
-    bool reactive = false;
-    auto *env = currentEnv_.get();
-    while (env) {
-      auto it = env->vars().find(id->name);
-      if (it != env->vars().end()) {
-        reactive = it->second.reactive;
-        break;
-      }
-      env = env->parent().get();
-    }
     currentEnv_->set(id->name, newVal, e.line);
-    if (reactive)
-      notifyWatchers(id->name, newVal);
   } else if (auto *idx = std::get_if<IndexExpr>(&e.target->data)) {
     auto obj = evalExpr(*idx->object);
     auto key = evalExpr(*idx->index);
@@ -723,15 +803,40 @@ ValuePtr Interpreter::evalAssign(const AssignExpr &e) {
       if (i < 0)
         i += elems.size();
       if (i < 0 || (size_t)i >= elems.size())
-        throw RuntimeError("List index out of bounds", e.line);
+        throw IndexError("List index out of bounds", e.line);
       elems[i] = newVal;
     } else if (obj->isDict()) {
       obj->asDict()->set(key->toString(), newVal);
     } else {
-      throw RuntimeError("Cannot index-assign to " + obj->typeName(), e.line);
+      throw TypeError("Cannot index-assign to " + obj->typeName(), e.line);
     }
   } else if (auto *mem = std::get_if<MemberExpr>(&e.target->data)) {
     auto obj = evalExpr(*mem->object);
+    if (mem->op == "->") {
+      if (!obj->isPtr()) {
+        throw TypeError("Cannot use '->' on non-pointer object of type '" + obj->typeName() + "'. Use '.' instead.", e.line);
+      }
+      auto target = obj->asPtr()->target;
+      if (!target || !(*target)) {
+        throw RuntimeError("Null pointer dereference", e.line, "E_RUNTIME_403");
+      }
+      obj = *target;
+    } else if (mem->op == "." || mem->op == "?.") {
+      if (obj->isPtr()) {
+        throw TypeError("Cannot use '" + mem->op + "' on pointer object. Use '->' instead.", e.line);
+      }
+      if (obj->isClassDef()) {
+        throw TypeError("Cannot use '" + mem->op + "' on Class. Use '::' instead.", e.line);
+      }
+    } else if (mem->op == "::") {
+      if (obj->isClassInst() || obj->isStructInst()) {
+        throw TypeError("Cannot use '::' on instance of '" + obj->typeName() + "'. Use '.' instead.", e.line);
+      }
+      if (obj->isPtr()) {
+        throw TypeError("Cannot use '::' on pointer object. Use '->' instead.", e.line);
+      }
+    }
+
     if (obj->isClassInst()) {
       obj->asClassInst()->members->set(mem->member, newVal, e.line);
     } else if (obj->isStructInst()) {
@@ -747,6 +852,7 @@ ValuePtr Interpreter::evalAssign(const AssignExpr &e) {
     throw RuntimeError("Invalid assignment target", e.line);
   }
 
+  trace("Assign: assigned to " + newVal->typeName());
   return newVal;
 }
 
@@ -761,6 +867,31 @@ ValuePtr Interpreter::evalCall(const CallExpr &e) {
   if (auto *mem = std::get_if<MemberExpr>(&e.callee->data)) {
     auto obj = evalExpr(*mem->object);
     if (obj->isNull() && mem->safe) return makeNull();
+
+    if (mem->op == "->") {
+      if (!obj->isPtr()) {
+        throw TypeError("Cannot use '->' on non-pointer object of type '" + obj->typeName() + "'. Use '.' instead.", e.line);
+      }
+      auto target = obj->asPtr()->target;
+      if (!target || !(*target)) {
+        throw RuntimeError("Null pointer dereference", e.line, "E_RUNTIME_403");
+      }
+      obj = *target;
+    } else if (mem->op == "." || mem->op == "?.") {
+      if (obj->isPtr()) {
+        throw TypeError("Cannot use '" + mem->op + "' on pointer object. Use '->' instead.", e.line);
+      }
+      if (obj->isClassDef()) {
+        throw TypeError("Cannot use '" + mem->op + "' on Class. Use '::' instead.", e.line);
+      }
+    } else if (mem->op == "::") {
+      if (obj->isClassInst() || obj->isStructInst()) {
+        throw TypeError("Cannot use '::' on instance of '" + obj->typeName() + "'. Use '.' instead.", e.line);
+      }
+      if (obj->isPtr()) {
+        throw TypeError("Cannot use '::' on pointer object. Use '->' instead.", e.line);
+      }
+    }
 
     if (obj->isClassInst()) {
       auto inst = obj->asClassInst();
@@ -843,6 +974,7 @@ ValuePtr Interpreter::evalCall(const CallExpr &e) {
 
 ValuePtr Interpreter::callFunction(std::shared_ptr<FunctionValue> fn,
                                    std::vector<ValuePtr> args, int line) {
+  trace("Call: function '" + fn->name + "'");
   if (fn->isNative) {
     return fn->native(std::move(args));
   }
@@ -877,6 +1009,7 @@ ValuePtr Interpreter::callFunction(std::shared_ptr<FunctionValue> fn,
 ValuePtr Interpreter::callMethod(std::shared_ptr<ClassInstance> inst,
                                  const std::string &name,
                                  std::vector<ValuePtr> args, int line) {
+  trace("Call: method '" + name + "' on " + inst->def->name);
   if (!inst->members->has(name))
     throw RuntimeError("Method '" + name + "' not found", line);
   auto mv = inst->members->get(name);
@@ -917,7 +1050,7 @@ ValuePtr Interpreter::evalIndex(const IndexExpr &e) {
     if (i < 0)
       i += elems.size();
     if (i < 0 || (size_t)i >= elems.size())
-      throw RuntimeError("List index " + std::to_string(key->asInt()) +
+      throw IndexError("List index " + std::to_string(key->asInt()) +
                              " out of bounds",
                          e.line);
     return elems[i];
@@ -932,10 +1065,10 @@ ValuePtr Interpreter::evalIndex(const IndexExpr &e) {
     if (i < 0)
       i += s.size();
     if (i < 0 || (size_t)i >= s.size())
-      throw RuntimeError("String index out of bounds", e.line);
+      throw IndexError("String index out of bounds", e.line);
     return makeStr(std::string(1, s[i]));
   }
-  throw RuntimeError("Cannot index '" + obj->typeName() + "'", e.line);
+  throw TypeError("Cannot index '" + obj->typeName() + "'", e.line);
 }
 
 ValuePtr Interpreter::evalMember(const MemberExpr &e) {
@@ -945,6 +1078,31 @@ ValuePtr Interpreter::evalMember(const MemberExpr &e) {
   if (obj->isNull() && e.safe)
     return makeNull();
 
+  if (e.op == "->") {
+    if (!obj->isPtr()) {
+      throw TypeError("Cannot use '->' on non-pointer object of type '" + obj->typeName() + "'. Use '.' instead.", e.line);
+    }
+    auto target = obj->asPtr()->target;
+    if (!target || !(*target)) {
+      throw RuntimeError("Null pointer dereference", e.line, "E_RUNTIME_403");
+    }
+    obj = *target;
+  } else if (e.op == "." || e.op == "?.") {
+    if (obj->isPtr()) {
+      throw TypeError("Cannot use '" + e.op + "' on pointer object. Use '->' instead.", e.line);
+    }
+    if (obj->isClassDef()) {
+      throw TypeError("Cannot use '" + e.op + "' on Class. Use '::' instead.", e.line);
+    }
+  } else if (e.op == "::") {
+    if (obj->isClassInst() || obj->isStructInst()) {
+      throw TypeError("Cannot use '::' on instance of '" + obj->typeName() + "'. Use '.' instead.", e.line);
+    }
+    if (obj->isPtr()) {
+      throw TypeError("Cannot use '::' on pointer object. Use '->' instead.", e.line);
+    }
+  }
+
   if (obj->isClassInst()) {
     auto inst = obj->asClassInst();
     if (inst->members->hasLocal(e.member) || inst->members->has(e.member))
@@ -952,6 +1110,14 @@ ValuePtr Interpreter::evalMember(const MemberExpr &e) {
     // Return bound method
     throw RuntimeError(
         "Member '" + e.member + "' not found on " + inst->def->name, e.line);
+  }
+
+  if (obj->isClassDef()) {
+    auto def = std::get<std::shared_ptr<ClassDef>>(obj->data);
+    if (def->methods->has(e.member))
+      return def->methods->get(e.member, e.line);
+    throw RuntimeError(
+        "Static member '" + e.member + "' not found on class " + def->name, e.line);
   }
 
   if (obj->isStructInst()) {
@@ -1080,11 +1246,62 @@ ValuePtr Interpreter::evalTernary(const TernaryExpr &e) {
   return cond->truthy() ? evalExpr(*e.thenExpr) : evalExpr(*e.elseExpr);
 }
 
+ValuePtr Interpreter::evalDelete(const DeleteExpr &e) {
+  ValuePtr val = evalExpr(*e.operand);
+  ValuePtr targetVal = val;
+  ValuePtr* targetSlot = nullptr;
+
+  if (val->isPtr()) {
+    targetSlot = val->asPtr()->target;
+    if (targetSlot) {
+      targetVal = *targetSlot;
+    }
+  }
+
+  if (targetVal && targetVal->isClassInst()) {
+    auto inst = targetVal->asClassInst();
+    std::unordered_set<std::string> executed;
+    // Run ordered destructors in def->dtorOrder
+    for (auto &[n, method] : inst->def->dtorOrder) {
+      if (inst->members->has(method)) {
+        auto mv = inst->members->get(method);
+        if (mv->isFn()) {
+          std::vector<ValuePtr> emptyArgs;
+          callMethod(inst, method, emptyArgs, e.line);
+          executed.insert(method);
+        }
+      }
+    }
+    // Also check for general "cleanup" or "destroy" or "destructor" methods if not already run
+    for (const std::string method : {"cleanup", "destroy", "destructor"}) {
+      if (executed.count(method) == 0 && inst->members->has(method)) {
+        auto mv = inst->members->get(method);
+        if (mv->isFn()) {
+          std::vector<ValuePtr> emptyArgs;
+          callMethod(inst, method, emptyArgs, e.line);
+        }
+      }
+    }
+  }
+
+  // Set the variable slot to null to reclaim/release memory
+  if (targetSlot) {
+    *targetSlot = makeNull();
+  } else {
+    if (auto* ident = std::get_if<IdentExpr>(&e.operand->data)) {
+      currentEnv_->set(ident->name, makeNull(), e.line);
+    }
+  }
+
+  return makeNull();
+}
+
 // ─── Built-in methods
 // ─────────────────────────────────────────────────────────
 
 ValuePtr Interpreter::callBuiltinMethod(ValuePtr obj, const std::string &method,
                                         std::vector<ValuePtr> args, int line) {
+  trace("Call: builtin method '" + method + "' on " + obj->typeName());
   // String methods
   if (obj->isStr()) {
     const std::string &s = obj->asStr();
@@ -1332,45 +1549,45 @@ ValuePtr Interpreter::callBuiltinMethod(ValuePtr obj, const std::string &method,
 // ───────────────────────────────────────────────────────
 
 void Interpreter::registerBuiltins() {
+  auto builtins = std::make_shared<DictValue>();
+
   auto defNative = [&](const std::string &name,
                        std::function<ValuePtr(std::vector<ValuePtr>)> fn) {
     auto fv = std::make_shared<FunctionValue>();
     fv->name = name;
     fv->isNative = true;
     fv->native = std::move(fn);
-    globalEnv_->define(name, makeFn(fv), true);
+    builtins->set(name, makeFn(fv));
   };
-
-  // print / println
-  defNative("print", [this](std::vector<ValuePtr> args) -> ValuePtr {
-    for (size_t i = 0; i < args.size(); i++) {
-      if (i)
-        print(" ");
-      print(args[i]->toString());
-    }
-    return makeNull();
-  });
-  defNative("println", [this](std::vector<ValuePtr> args) -> ValuePtr {
-    for (size_t i = 0; i < args.size(); i++) {
-      if (i)
-        print(" ");
-      print(args[i]->toString());
-    }
-    print("\n");
-    return makeNull();
-  });
-  defNative("printErr", [this](std::vector<ValuePtr> args) -> ValuePtr {
-    for (auto &a : args)
-      printErr(a->toString());
-    printErr("\n");
-    return makeNull();
-  });
 
   // input
   defNative("input", [this](std::vector<ValuePtr> args) -> ValuePtr {
     if (!args.empty())
       print(args[0]->toString());
     return makeStr(readLine());
+  });
+
+  // time delays
+  defNative("delay", [](std::vector<ValuePtr> args) -> ValuePtr {
+    if (!args.empty()) {
+      double ms = args[0]->isFloat() ? args[0]->asFloat() : (double)args[0]->asInt();
+      std::this_thread::sleep_for(std::chrono::duration<double, std::milli>(ms));
+    }
+    return makeNull();
+  });
+  defNative("delayMilliseconds", [](std::vector<ValuePtr> args) -> ValuePtr {
+    if (!args.empty()) {
+      double ms = args[0]->isFloat() ? args[0]->asFloat() : (double)args[0]->asInt();
+      std::this_thread::sleep_for(std::chrono::duration<double, std::milli>(ms));
+    }
+    return makeNull();
+  });
+  defNative("delayMicroseconds", [](std::vector<ValuePtr> args) -> ValuePtr {
+    if (!args.empty()) {
+      double us = args[0]->isFloat() ? args[0]->asFloat() : (double)args[0]->asInt();
+      std::this_thread::sleep_for(std::chrono::duration<double, std::micro>(us));
+    }
+    return makeNull();
   });
 
   // type / typeof
@@ -1386,12 +1603,12 @@ void Interpreter::registerBuiltins() {
   });
 
   // toString / str
-  defNative("str", [](std::vector<ValuePtr> args) -> ValuePtr {
+  defNative("toStr", [](std::vector<ValuePtr> args) -> ValuePtr {
     if (args.empty())
       return makeStr("");
     return makeStr(args[0]->toString());
   });
-  defNative("int", [](std::vector<ValuePtr> args) -> ValuePtr {
+  defNative("toInt", [](std::vector<ValuePtr> args) -> ValuePtr {
     if (args.empty())
       return makeInt(0);
     auto &v = args[0];
@@ -1407,7 +1624,7 @@ void Interpreter::registerBuiltins() {
     }
     return makeInt(0);
   });
-  defNative("float", [](std::vector<ValuePtr> args) -> ValuePtr {
+  defNative("toFloat", [](std::vector<ValuePtr> args) -> ValuePtr {
     if (args.empty())
       return makeFloat(0.0);
     auto &v = args[0];
@@ -1423,7 +1640,7 @@ void Interpreter::registerBuiltins() {
     }
     return makeFloat(0.0);
   });
-  defNative("bool", [](std::vector<ValuePtr> args) -> ValuePtr {
+  defNative("toBool", [](std::vector<ValuePtr> args) -> ValuePtr {
     if (args.empty())
       return makeBool(false);
     return makeBool(args[0]->truthy());
@@ -1477,7 +1694,10 @@ void Interpreter::registerBuiltins() {
     return makeInt(std::abs(a[0]->asInt()));
   });
   defNative("sqrt", [](std::vector<ValuePtr> a) -> ValuePtr {
-    return makeFloat(std::sqrt(a.empty() ? 0 : a[0]->asFloat()));
+    double val = a.empty() ? 0 : a[0]->asFloat();
+    if (val < 0)
+      throw MathError("Cannot take square root of negative number");
+    return makeFloat(std::sqrt(val));
   });
   defNative("pow", [](std::vector<ValuePtr> a) -> ValuePtr {
     return makeFloat(std::pow(a.size() < 2 ? 1 : a[0]->asFloat(),
@@ -1546,28 +1766,25 @@ void Interpreter::registerBuiltins() {
     return makeNull();
   });
 
-  // Global constants
-  globalEnv_->define("PI", makeFloat(3.14159265358979323846), false);
-  globalEnv_->define("E", makeFloat(2.71828182845904523536), false);
-  globalEnv_->define("TAU", makeFloat(6.28318530717958647692), false);
-  globalEnv_->define("PHI", makeFloat(1.61803398874989484820), false);
-  globalEnv_->define("INF", makeFloat(std::numeric_limits<double>::infinity()),
-                     false);
-  globalEnv_->define(
-      "NEG_INF", makeFloat(-std::numeric_limits<double>::infinity()), false);
-  globalEnv_->define("NAN", makeFloat(std::numeric_limits<double>::quiet_NaN()),
-                     false);
+  // Global constants in builtins
+  builtins->set("PI", makeFloat(3.14159265358979323846));
+  builtins->set("E", makeFloat(2.71828182845904523536));
+  builtins->set("TAU", makeFloat(6.28318530717958647692));
+  builtins->set("PHI", makeFloat(1.61803398874989484820));
+  builtins->set("INF", makeFloat(std::numeric_limits<double>::infinity()));
+  builtins->set("NEG_INF", makeFloat(-std::numeric_limits<double>::infinity()));
+  builtins->set("NAN", makeFloat(std::numeric_limits<double>::quiet_NaN()));
 
-  globalEnv_->define("SECOND", makeInt(1), false);
-  globalEnv_->define("MINUTE", makeInt(60), false);
-  globalEnv_->define("HOUR", makeInt(3600), false);
-  globalEnv_->define("DAY", makeInt(86400), false);
-  globalEnv_->define("WEEK", makeInt(604800), false);
+  builtins->set("SECOND", makeInt(1));
+  builtins->set("MINUTE", makeInt(60));
+  builtins->set("HOUR", makeInt(3600));
+  builtins->set("DAY", makeInt(86400));
+  builtins->set("WEEK", makeInt(604800));
 
-  globalEnv_->define("RUNTIME_VERSION", makeStr("1.0.0"), false);
-  globalEnv_->define("LANG_VERSION", makeStr("1.0.0"), false);
-  globalEnv_->define("BUILD_MODE", makeStr("debug"), false);
-  globalEnv_->define("DEBUG_MODE", makeBool(false), false);
+  builtins->set("RUNTIME_VERSION", makeStr("1.0.0"));
+  builtins->set("LANG_VERSION", makeStr("1.0.0"));
+  builtins->set("BUILD_MODE", makeStr("debug"));
+  builtins->set("DEBUG_MODE", makeBool(false));
 
   // Property constants (runtime no-ops)
   for (auto &p : {"PROP_FROZEN",   "PROP_READONLY",     "PROP_IMMUTABLE",
@@ -1579,29 +1796,38 @@ void Interpreter::registerBuiltins() {
                   "PROP_TEMP",     "PROP_NATIVE",       "PROP_PROTECTED",
                   "PROP_INTERNAL", "PROP_EXPERIMENTAL", "PROP_DEPRECATED",
                   "PROP_LOCKED",   "PROP_OBSERVABLE"}) {
-    globalEnv_->define(p, makeStr(p), false);
+    builtins->set(p, makeStr(p));
   }
 
   // Terminal namespace
   auto terminal = std::make_shared<DictValue>();
   // Terminal.Out, Terminal.Warn, Terminal.Err are stream markers
 
-  // We use a trick: Terminal is a dict with Out/Warn/Err as special sentinel
-  // strings
+  // We use a trick: Terminal is a dict with out/warn/err as special sentinel strings
+  terminal->set("out", makeStr("<Terminal.Out>"));
   terminal->set("Out", makeStr("<Terminal.Out>"));
+  terminal->set("warn", makeStr("<Terminal.Warn>"));
   terminal->set("Warn", makeStr("<Terminal.Warn>"));
+  terminal->set("err", makeStr("<Terminal.Err>"));
   terminal->set("Err", makeStr("<Terminal.Err>"));
+  terminal->set("EOL", makeStr("\n"));
+  terminal->set("eol", makeStr("\n"));
 
-  // Terminal.In is a special object
+  // Terminal.in is a special object
   auto terminalIn = std::make_shared<DictValue>();
-  // Terminal.In.read() - handled via callBuiltinMethod
+  // Terminal.in.read() - handled via callBuiltinMethod
+  terminal->set("in", makeDict(terminalIn));
   terminal->set("In", makeDict(terminalIn));
 
-  globalEnv_->define("Terminal", makeDict(terminal), false);
-  globalEnv_->define("stdout", makeStr("<Terminal.Out>"), false);
-  globalEnv_->define("stderr", makeStr("<Terminal.Err>"), false);
-  globalEnv_->define("stdin", makeStr("<Terminal.In>"), false);
-  globalEnv_->define("stdwarn", makeStr("<Terminal.Warn>"), false);
+  builtins->set("Terminal", makeDict(terminal));
+  builtins->set("stdout", makeStr("<Terminal.Out>"));
+  builtins->set("stderr", makeStr("<Terminal.Err>"));
+  builtins->set("stdin", makeStr("<Terminal.In>"));
+  builtins->set("stdwarn", makeStr("<Terminal.Warn>"));
+  builtins->set("stdout", makeStr("<Terminal.Out>"));
+  builtins->set("stderr", makeStr("<Terminal.Err>"));
+  builtins->set("stdin", makeStr("<Terminal.In>"));
+  builtins->set("stdwarn", makeStr("<Terminal.Warn>"));
 
   // Terminal.In.read()
   defNative("read", [this](std::vector<ValuePtr>) -> ValuePtr {
@@ -1619,4 +1845,6 @@ void Interpreter::registerBuiltins() {
       return makeStr("");
     return makeStr(std::string(1, (char)args[0]->asInt()));
   });
+
+  globalEnv_->define("__builtins__", makeDict(builtins), false);
 }

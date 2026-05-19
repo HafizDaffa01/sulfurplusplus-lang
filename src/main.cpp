@@ -9,10 +9,31 @@
 #include "../include/parser.hpp"
 #include "../include/interpreter.hpp"
 #include "../include/error.hpp"
+#include <iomanip>
+
+static std::string formatDuration(double ms) {
+    double us = ms * 1000.0;
+    std::ostringstream oss;
+    oss << std::fixed << std::setprecision(2);
+    if (ms >= 86400000.0) {
+        oss << (ms / 86400000.0) << " d (" << us << " us)";
+    } else if (ms >= 3600000.0) {
+        oss << (ms / 3600000.0) << " h (" << us << " us)";
+    } else if (ms >= 60000.0) {
+        oss << (ms / 60000.0) << " m (" << us << " us)";
+    } else if (ms >= 1000.0) {
+        oss << (ms / 1000.0) << " s (" << us << " us)";
+    } else if (ms >= 1.0) {
+        oss << ms << " ms (" << us << " us)";
+    } else {
+        oss << us << " us";
+    }
+    return oss.str();
+}
 
 static std::string readFile(const std::string& path) {
     std::ifstream f(path);
-    if (!f) throw std::runtime_error("Cannot open file: " + path);
+    if (!f) throw IOError("Cannot open file: " + path);
     std::ostringstream ss;
     ss << f.rdbuf();
     return ss.str();
@@ -29,18 +50,28 @@ static void runREPL(bool debug) {
     printBanner();
     std::cerr << "Type 'exit' or Ctrl+C to quit.\n\n";
     Interpreter interp(debug);
+
+    // Auto-inject standard functions and constants into global scope in REPL
+    interp.injectBuiltinsIntoGlobal();
+
     std::string line;
     while (true) {
-        std::cerr << "sfpp> ";
+        std::cerr << "\nsfpp> ";
         if (!std::getline(std::cin, line)) break;
         if (line == "exit" || line == "quit") break;
         if (line.empty()) continue;
         try {
+            auto start = std::chrono::high_resolution_clock::now();
             Lexer lex(line, "<repl>");
             auto tokens = lex.tokenize();
             Parser par(std::move(tokens));
             auto stmts = par.parse();
             interp.run(stmts);
+            if (debug) {
+                auto end = std::chrono::high_resolution_clock::now();
+                double duration = std::chrono::duration<double, std::milli>(end - start).count();
+                std::cerr << "\n[DEBUG] Execution finished in " << formatDuration(duration) << "\n";
+            }
         } catch (SulfurError& e) {
             std::cerr << "[" << e.code << "]";
             if (e.line > 0) std::cerr << " line " << e.line;
@@ -54,6 +85,7 @@ static void runREPL(bool debug) {
 static int runFile(const std::string& filename, bool debug, bool watch) {
     auto runOnce = [&]() -> int {
         try {
+            auto start = std::chrono::high_resolution_clock::now();
             std::string src = readFile(filename);
             Lexer lex(src, filename);
             auto tokens = lex.tokenize();
@@ -61,6 +93,11 @@ static int runFile(const std::string& filename, bool debug, bool watch) {
             auto stmts = par.parse();
             Interpreter interp(debug);
             interp.run(stmts);
+            if (debug) {
+                auto end = std::chrono::high_resolution_clock::now();
+                double duration = std::chrono::duration<double, std::milli>(end - start).count();
+                std::cerr << "\n[DEBUG] Execution finished in " << formatDuration(duration) << "\n";
+            }
             return 0;
         } catch (SulfurError& e) {
             std::string loc = e.line > 0 ? " line " + std::to_string(e.line) : "";

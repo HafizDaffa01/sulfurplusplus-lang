@@ -1,0 +1,9 @@
+// std/specials.sfpp
+export this as std/specials;
+
+// Special operations including matrix and linear algebra
+
+// Matrix functions will be mapped here once implemented natively
+let matrix_add = __builtins__.matrix_add;
+let matrix_mul = __builtins__.matrix_mul;
+let matrix_transpose = __builtins__.matrix_transpose;

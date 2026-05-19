@@ -1,7 +1,6 @@
 #pragma once
 #include "token.hpp"
 #include <memory>
-#include <optional>
 #include <string>
 #include <variant>
 #include <vector>
@@ -89,6 +88,7 @@ struct MemberExpr {
   ExprPtr object;
   std::string member;
   bool safe; // ?. vs .
+  std::string op; // ".", "::", "->"
   int line;
 };
 
@@ -139,13 +139,17 @@ struct DerefExpr {
   ExprPtr operand;
   int line;
 };
+struct DeleteExpr {
+  ExprPtr operand;
+  int line;
+};
 
 struct Expr {
   std::variant<IntLitExpr, FloatLitExpr, BoolLitExpr, NullLitExpr,
                StringLitExpr, CharLitExpr, PSStringExpr, IdentExpr, BinaryExpr,
                UnaryExpr, AssignExpr, CallExpr, IndexExpr, MemberExpr,
                PipelineExpr, NullCoalExpr, ListLitExpr, DictLitExpr, LambdaExpr,
-               NewExpr, TernaryExpr, AddrOfExpr, DerefExpr>
+               NewExpr, TernaryExpr, AddrOfExpr, DerefExpr, DeleteExpr>
       data;
 
   template <typename T> Expr(T &&v) : data(std::forward<T>(v)) {}
@@ -158,7 +162,7 @@ struct Expr {
 // ─── Statement Nodes ─────────────────────────────────────────────────────────
 
 struct VarDeclStmt {
-  std::string keyword; // let, var, auto, dyn, reactive
+  std::string keyword; // let, var, auto, dyn
   std::string name;
   std::string type;    // may be empty for auto/dyn
   ExprPtr initializer; // may be null
@@ -243,32 +247,16 @@ struct StreamOutStmt {
   int line;
 };
 
-struct WatchStmt {
-  std::string varName;
-  ExprPtr cond; // optional condition (watch hp <= 0 {...})
-  StmtPtr body;
-  int line;
-};
-
-struct SignalDeclStmt {
-  std::string name;
-  int line;
-};
-struct EmitStmt {
-  std::string name;
-  int line;
-};
-
-struct OnStmt {
-  std::string signal;
-  StmtPtr body;
-  int line;
-};
 
 struct ImportStmt {
   std::string pkg;                // @asep/mathlib
   std::string alias;              // as math
   std::vector<std::string> flags; // --use=[FULL, NOLIBNAME]
+  int line;
+};
+
+struct ExportStmt {
+  std::string alias;
   int line;
 };
 
@@ -285,8 +273,7 @@ struct Stmt {
   std::variant<VarDeclStmt, FnDeclStmt, ReturnStmt, BreakStmt, ContinueStmt,
                BlockStmt, IfStmt, WhileStmt, ForStmt, ClassDeclStmt,
                StructDeclStmt, InterfaceDeclStmt, ExprStmt, StreamOutStmt,
-               WatchStmt, SignalDeclStmt, EmitStmt, OnStmt, ImportStmt,
-               UnsafeStmt, DeferStmt>
+               ImportStmt, ExportStmt, UnsafeStmt, DeferStmt>
       data;
 
   template <typename T> Stmt(T &&v) : data(std::forward<T>(v)) {}

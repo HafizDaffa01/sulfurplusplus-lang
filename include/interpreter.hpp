@@ -2,17 +2,17 @@
 #include <memory>
 #include <vector>
 #include <string>
-#include <sstream>
+#include <unordered_map>
 #include "ast.hpp"
 #include "value.hpp"
 #include "environment.hpp"
-#include "error.hpp"
 
 class Interpreter {
 public:
     explicit Interpreter(bool debugMode = false);
 
     void run(const std::vector<StmtPtr>& stmts);
+    void injectBuiltinsIntoGlobal();
     void setStdout(std::ostream* out) { stdout_ = out; }
     void setStderr(std::ostream* err) { stderr_ = err; }
     void setStdin(std::istream* in)   { stdin_  = in; }
@@ -28,6 +28,9 @@ private:
     // Deferred blocks stack
     std::vector<std::vector<Stmt*>> deferStack_;
 
+    // Registry for modules that export themselves
+    std::unordered_map<std::string, ValuePtr> exportedModules_;
+
     // Execute statement
     void execStmt(const Stmt& s);
     void execBlock(const BlockStmt& b, std::shared_ptr<Environment> env = nullptr);
@@ -41,11 +44,9 @@ private:
     void execFor(const ForStmt& s);
     void execReturn(const ReturnStmt& s);
     void execStreamOut(const StreamOutStmt& s);
-    void execWatch(const WatchStmt& s);
-    void execSignalDecl(const SignalDeclStmt& s);
-    void execEmit(const EmitStmt& s);
-    void execOn(const OnStmt& s);
+
     void execImport(const ImportStmt& s);
+    void execExport(const ExportStmt& s);
     void execUnsafe(const UnsafeStmt& s);
     void execDefer(const DeferStmt& s);
 
@@ -71,6 +72,7 @@ private:
     ValuePtr evalDictLit(const DictLitExpr& e);
     ValuePtr evalNew(const NewExpr& e);
     ValuePtr evalTernary(const TernaryExpr& e);
+    ValuePtr evalDelete(const DeleteExpr& e);
 
     // Function call helpers
     ValuePtr callFunction(std::shared_ptr<FunctionValue> fn,
@@ -79,8 +81,7 @@ private:
                         const std::string& name,
                         std::vector<ValuePtr> args, int line);
 
-    // Reactive: trigger watchers when a reactive variable changes
-    void notifyWatchers(const std::string& varName, ValuePtr newVal);
+
 
     // Built-in methods on values
     ValuePtr callBuiltinMethod(ValuePtr obj, const std::string& method,

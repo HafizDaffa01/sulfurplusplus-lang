@@ -12,8 +12,7 @@ enum class TokenType {
     LET, VAR, AUTO, DYN,
     FN, RETURN, CLASS, STRUCT, INTERFACE,
     IF, ELSE, WHILE, FOR, IN, BREAK, CONTINUE,
-    REACTIVE, WATCH, SIGNAL, EMIT, ON,
-    IMPORT, AS,
+    IMPORT, AS, EXPORT, THIS_KW,
     UNSAFE, DEFER,
     PTR, REF,
     NULL_KW, TRUE_KW, FALSE_KW,
@@ -56,7 +55,7 @@ enum class TokenType {
     LPAREN, RPAREN,
     LBRACE, RBRACE,
     LBRACKET, RBRACKET,
-    SEMICOLON, COLON, COMMA, DOT, AT,
+    SEMICOLON, COLON, DOUBLE_COLON, COMMA, DOT, AT,
 
     // Annotations
     HASH, // #[...]

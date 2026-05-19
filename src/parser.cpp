@@ -2,7 +2,6 @@
 #include "../include/error.hpp"
 #include "../include/lexer.hpp"
 #include <algorithm>
-#include <sstream>
 
 Parser::Parser(std::vector<Token> tokens) : tokens_(std::move(tokens)) {}
 
@@ -140,8 +139,6 @@ StmtPtr Parser::parseStmt() {
     return parseVarDecl("auto");
   if (check(TokenType::DYN))
     return parseVarDecl("dyn");
-  if (check(TokenType::REACTIVE))
-    return parseVarDecl("reactive");
   if (check(TokenType::FN))
     return parseFnDecl();
   if (check(TokenType::CLASS))
@@ -160,12 +157,10 @@ StmtPtr Parser::parseStmt() {
     return parseFor();
   if (check(TokenType::RETURN))
     return parseReturn();
-  if (check(TokenType::WATCH))
-    return parseWatch();
-  if (check(TokenType::ON))
-    return parseOn();
   if (check(TokenType::IMPORT))
     return parseImport();
+  if (check(TokenType::EXPORT))
+    return parseExport();
   if (check(TokenType::UNSAFE))
     return parseUnsafe();
   if (check(TokenType::DEFER))
@@ -173,25 +168,13 @@ StmtPtr Parser::parseStmt() {
 
   if (check(TokenType::BREAK)) {
     advance();
-    match(TokenType::SEMICOLON);
+    expect(TokenType::SEMICOLON, "Expected ';' after break statement");
     return std::make_unique<Stmt>(BreakStmt{line});
   }
   if (check(TokenType::CONTINUE)) {
     advance();
-    match(TokenType::SEMICOLON);
+    expect(TokenType::SEMICOLON, "Expected ';' after continue statement");
     return std::make_unique<Stmt>(ContinueStmt{line});
-  }
-  if (check(TokenType::SIGNAL)) {
-    advance();
-    std::string name = expect(TokenType::IDENT, "Expected signal name").value;
-    match(TokenType::SEMICOLON);
-    return std::make_unique<Stmt>(SignalDeclStmt{name, line});
-  }
-  if (check(TokenType::EMIT)) {
-    advance();
-    std::string name = expect(TokenType::IDENT, "Expected signal name").value;
-    match(TokenType::SEMICOLON);
-    return std::make_unique<Stmt>(EmitStmt{name, line});
   }
 
   return parseExprStmt();
@@ -210,7 +193,7 @@ StmtPtr Parser::parseVarDecl(const std::string &keyword) {
   if (match(TokenType::ASSIGN))
     init = parseExpr();
 
-  match(TokenType::SEMICOLON);
+  expect(TokenType::SEMICOLON, "Expected ';' after variable declaration");
   return std::make_unique<Stmt>(
       VarDeclStmt{keyword, name, type, std::move(init), line});
 }
@@ -259,17 +242,9 @@ StmtPtr Parser::parseClassDecl() {
   while (!check(TokenType::RBRACE) && !isAtEnd()) {
     if (check(TokenType::CONSTRUCTOR_ORDER)) {
       int n = std::stoi(advance().value);
-      expect(TokenType::IDENT, "Expected method name after constructor order")
-          .value;
-      // The method name was consumed in the token itself? No, let's re-check:
-      // Actually CONSTRUCTOR_ORDER token value is the number, next should be
-      // IDENT But wait, we need the name. Let me fix: the grammar is
-      // +1>methodName the lexer emits CONSTRUCTOR_ORDER with value=number, then
-      // IDENT follows? No. The lexer actually emits CONSTRUCTOR_ORDER with
-      // number only. We need to read the next IDENT for the method name.
       std::string methodName =
           expect(TokenType::IDENT, "Expected method name").value;
-      match(TokenType::SEMICOLON);
+      expect(TokenType::SEMICOLON, "Expected ';' after constructor order declaration");
       ctorOrder.push_back({n, methodName});
       continue;
     }
@@ -277,7 +252,7 @@ StmtPtr Parser::parseClassDecl() {
       int n = std::stoi(advance().value);
       std::string methodName =
           expect(TokenType::IDENT, "Expected method name").value;
-      match(TokenType::SEMICOLON);
+      expect(TokenType::SEMICOLON, "Expected ';' after destructor order declaration");
       dtorOrder.push_back({n, methodName});
       continue;
     }
@@ -294,7 +269,7 @@ StmtPtr Parser::parseClassDecl() {
       ExprPtr init;
       if (match(TokenType::ASSIGN))
         init = parseExpr();
-      match(TokenType::SEMICOLON);
+      expect(TokenType::SEMICOLON, "Expected ';' after field declaration");
       // Store as var decl
       members.push_back(std::make_unique<Stmt>(
           VarDeclStmt{"var", fieldName, fieldType, std::move(init), line}));
@@ -302,8 +277,7 @@ StmtPtr Parser::parseClassDecl() {
     }
     // Variable declarations inside class
     if (check(TokenType::LET) || check(TokenType::VAR) ||
-        check(TokenType::AUTO) || check(TokenType::DYN) ||
-        check(TokenType::REACTIVE)) {
+        check(TokenType::AUTO) || check(TokenType::DYN)) {
       std::string kw = advance().value;
       members.push_back(parseVarDecl(kw)); // This re-reads... fix
       continue;
@@ -334,7 +308,7 @@ StmtPtr Parser::parseStructDecl() {
     std::string ftype = parseType();
     fields.push_back({fname, ftype});
     match(TokenType::COMMA);
-    match(TokenType::SEMICOLON);
+    expect(TokenType::SEMICOLON, "Expected ';' after struct field declaration");
   }
   expect(TokenType::RBRACE, "Expected '}' after struct body");
   return std::make_unique<Stmt>(StructDeclStmt{name, fields, line});
@@ -359,7 +333,7 @@ StmtPtr Parser::parseInterfaceDecl() {
       std::string retType;
       if (match(TokenType::COLON))
         retType = parseType();
-      match(TokenType::SEMICOLON);
+      expect(TokenType::SEMICOLON, "Expected ';' after interface method declaration");
       iface.methods.push_back(
           FnDeclStmt{mname, params, retType, nullptr, true, line});
       continue;
@@ -429,61 +403,20 @@ StmtPtr Parser::parseReturn() {
   ExprPtr val;
   if (!check(TokenType::SEMICOLON) && !check(TokenType::RBRACE) && !isAtEnd())
     val = parseExpr();
-  match(TokenType::SEMICOLON);
+  expect(TokenType::SEMICOLON, "Expected ';' after return statement");
   return std::make_unique<Stmt>(ReturnStmt{std::move(val), line});
 }
 
-StmtPtr Parser::parseWatch() {
-  int line = peek().line;
-  advance(); // 'watch'
-  std::string varName =
-      expect(TokenType::IDENT, "Expected variable name after 'watch'").value;
 
-  // Optional condition: watch hp <= 0 { ... }
-  ExprPtr cond;
-  if (!check(TokenType::LBRACE)) {
-    // Parse a binary expression starting with varName as left side
-    // We already consumed the varName, so create an IdentExpr and continue
-    auto left = std::make_unique<Expr>(IdentExpr{varName, line});
-    // Check for comparison operator
-    if (check(TokenType::LTE) || check(TokenType::GTE) ||
-        check(TokenType::LT) || check(TokenType::GT) || check(TokenType::EQ) ||
-        check(TokenType::NEQ)) {
-      std::string op = advance().value;
-      auto right = parseExpr();
-      cond = std::make_unique<Expr>(
-          BinaryExpr{op, std::move(left), std::move(right), line});
-    }
-  }
-
-  auto body = parseBlock();
-  return std::make_unique<Stmt>(
-      WatchStmt{varName, std::move(cond), std::move(body), line});
-}
-
-StmtPtr Parser::parseOn() {
-  int line = peek().line;
-  advance(); // 'on'
-  std::string sig =
-      expect(TokenType::IDENT, "Expected signal name after 'on'").value;
-  auto body = parseBlock();
-  return std::make_unique<Stmt>(OnStmt{sig, std::move(body), line});
-}
 
 StmtPtr Parser::parseImport() {
   int line = peek().line;
   advance(); // 'import'
 
-  // @pkg/name
   std::string pkg;
-  if (match(TokenType::AT)) {
-    pkg = "@";
-    while (!check(TokenType::AS) && !check(TokenType::SEMICOLON) &&
-           !isAtEnd() && !check(TokenType::MINUS)) {
-      pkg += advance().value;
-    }
-  } else {
-    pkg = advance().value;
+  while (!check(TokenType::AS) && !check(TokenType::SEMICOLON) &&
+         !isAtEnd() && !check(TokenType::MINUS)) {
+    pkg += advance().value;
   }
 
   std::string alias;
@@ -509,8 +442,24 @@ StmtPtr Parser::parseImport() {
     }
   }
 
-  match(TokenType::SEMICOLON);
+  expect(TokenType::SEMICOLON, "Expected ';' after import statement");
   return std::make_unique<Stmt>(ImportStmt{pkg, alias, flags, line});
+}
+
+StmtPtr Parser::parseExport() {
+  int line = peek().line;
+  advance(); // 'export'
+  
+  expect(TokenType::THIS_KW, "Expected 'this' after 'export'");
+  expect(TokenType::AS, "Expected 'as' after 'this'");
+  
+  std::string alias;
+  while (!check(TokenType::SEMICOLON) && !isAtEnd()) {
+    alias += advance().value;
+  }
+  
+  expect(TokenType::SEMICOLON, "Expected ';' after export statement");
+  return std::make_unique<Stmt>(ExportStmt{alias, line});
 }
 
 StmtPtr Parser::parseUnsafe() {
@@ -534,7 +483,7 @@ StmtPtr Parser::parseExprStmt() {
   // We parse as a normal expression and handle << at expression level,
   // but Terminal.Out << "..." is a special stream statement
   auto expr = parseExpr();
-  match(TokenType::SEMICOLON);
+  expect(TokenType::SEMICOLON, "Expected ';' after expression statement");
   return std::make_unique<Stmt>(ExprStmt{std::move(expr), line});
 }
 
@@ -620,11 +569,11 @@ ExprPtr Parser::parseEquality() {
 
 ExprPtr Parser::parseComparison() {
   int line = peek().line;
-  auto left = parseAddSub();
+  auto left = parseShift();
   while (check(TokenType::LT) || check(TokenType::GT) ||
          check(TokenType::LTE) || check(TokenType::GTE)) {
     std::string op = advance().value;
-    auto right = parseAddSub();
+    auto right = parseShift();
     left = std::make_unique<Expr>(
         BinaryExpr{op, std::move(left), std::move(right), line});
   }
@@ -637,6 +586,18 @@ ExprPtr Parser::parseAddSub() {
   while (check(TokenType::PLUS) || check(TokenType::MINUS)) {
     std::string op = advance().value;
     auto right = parseMulDiv();
+    left = std::make_unique<Expr>(
+        BinaryExpr{op, std::move(left), std::move(right), line});
+  }
+  return left;
+}
+
+ExprPtr Parser::parseShift() {
+  int line = peek().line;
+  auto left = parseAddSub();
+  while (check(TokenType::LSHIFT_OUT) || check(TokenType::RSHIFT_IN)) {
+    std::string op = advance().value;
+    auto right = parseAddSub();
     left = std::make_unique<Expr>(
         BinaryExpr{op, std::move(left), std::move(right), line});
   }
@@ -695,8 +656,14 @@ ExprPtr Parser::parsePostfix() {
   auto expr = parsePrimary();
 
   while (true) {
-    if (check(TokenType::DOT) || check(TokenType::OPT_CHAIN)) {
-      bool safe = check(TokenType::OPT_CHAIN);
+    if (check(TokenType::DOT) || check(TokenType::OPT_CHAIN) || check(TokenType::DOUBLE_COLON) || check(TokenType::ARROW)) {
+      TokenType opType = peek().type;
+      bool safe = (opType == TokenType::OPT_CHAIN);
+      std::string opStr = ".";
+      if (opType == TokenType::DOUBLE_COLON) opStr = "::";
+      else if (opType == TokenType::ARROW) opStr = "->";
+      else if (opType == TokenType::OPT_CHAIN) opStr = "?.";
+
       advance();
       std::string member =
           expect(TokenType::IDENT, "Expected member name").value;
@@ -712,12 +679,12 @@ ExprPtr Parser::parsePostfix() {
         expect(TokenType::RPAREN, "Expected ')' after arguments");
         // Build as CallExpr on MemberExpr
         auto mem = std::make_unique<Expr>(
-            MemberExpr{std::move(expr), member, safe, line});
+            MemberExpr{std::move(expr), member, safe, opStr, line});
         expr = std::make_unique<Expr>(
             CallExpr{std::move(mem), std::move(args), line});
       } else {
         expr = std::make_unique<Expr>(
-            MemberExpr{std::move(expr), member, safe, line});
+            MemberExpr{std::move(expr), member, safe, opStr, line});
       }
     } else if (check(TokenType::LBRACKET)) {
       advance();
@@ -736,13 +703,6 @@ ExprPtr Parser::parsePostfix() {
       expect(TokenType::RPAREN, "Expected ')' after arguments");
       expr = std::make_unique<Expr>(
           CallExpr{std::move(expr), std::move(args), line});
-    } else if (check(TokenType::LSHIFT_OUT)) {
-      // Stream output: expr << value
-      advance();
-      auto val = parseExpr();
-      // Return as BinaryExpr with op "<<"
-      expr = std::make_unique<Expr>(
-          BinaryExpr{"<<", std::move(expr), std::move(val), line});
     } else {
       break;
     }
@@ -803,6 +763,13 @@ ExprPtr Parser::parsePrimary() {
     return std::make_unique<Expr>(NewExpr{className, std::move(args), line});
   }
 
+  // delete operand
+  if (check(TokenType::DELETE)) {
+    advance();
+    auto operand = parsePrimary();
+    return std::make_unique<Expr>(DeleteExpr{std::move(operand), line});
+  }
+
   // List literal [a, b, c]
   if (check(TokenType::LBRACKET)) {
     advance();
@@ -841,7 +808,7 @@ ExprPtr Parser::parsePrimary() {
   }
 
   // Identifier
-  if (check(TokenType::IDENT)) {
+  if (check(TokenType::IDENT) || check(TokenType::THIS_KW)) {
     auto name = advance().value;
     return std::make_unique<Expr>(IdentExpr{name, line});
   }

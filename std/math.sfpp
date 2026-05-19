@@ -1,0 +1,24 @@
+export this as std/math;
+
+let PI = __builtins__.PI;
+let E = __builtins__.E;
+let TAU = __builtins__.TAU;
+let PHI = __builtins__.PHI;
+let INF = __builtins__.INF;
+let NEG_INF = __builtins__.NEG_INF;
+let NAN = __builtins__.NAN;
+
+let abs = __builtins__.abs;
+let sqrt = __builtins__.sqrt;
+let pow = __builtins__.pow;
+let floor = __builtins__.floor;
+let ceil = __builtins__.ceil;
+let round = __builtins__.round;
+let max = __builtins__.max;
+let min = __builtins__.min;
+let sin = __builtins__.sin;
+let cos = __builtins__.cos;
+let tan = __builtins__.tan;
+let log = __builtins__.log;
+let log2 = __builtins__.log2;
+let log10 = __builtins__.log10;

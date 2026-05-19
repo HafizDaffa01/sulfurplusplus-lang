@@ -97,6 +97,12 @@ std::shared_ptr<DictValue> Value::asDict() const {
   throw std::runtime_error("Value is not a dict");
 }
 
+std::shared_ptr<PtrValue> Value::asPtr() const {
+  if (isPtr())
+    return std::get<std::shared_ptr<PtrValue>>(data);
+  throw std::runtime_error("Value is not a pointer");
+}
+
 // ─── Truthy
 // ───────────────────────────────────────────────────────────────────
 

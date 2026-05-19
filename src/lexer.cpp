@@ -2,7 +2,6 @@
 #include "../include/error.hpp"
 #include <cctype>
 #include <unordered_map>
-#include <sstream>
 
 static const std::unordered_map<std::string, TokenType> KEYWORDS = {
     {"let",       TokenType::LET},
@@ -21,12 +20,9 @@ static const std::unordered_map<std::string, TokenType> KEYWORDS = {
     {"in",        TokenType::IN},
     {"break",     TokenType::BREAK},
     {"continue",  TokenType::CONTINUE},
-    {"reactive",  TokenType::REACTIVE},
-    {"watch",     TokenType::WATCH},
-    {"signal",    TokenType::SIGNAL},
-    {"emit",      TokenType::EMIT},
-    {"on",        TokenType::ON},
     {"import",    TokenType::IMPORT},
+    {"export",    TokenType::EXPORT},
+    {"this",      TokenType::THIS_KW},
     {"as",        TokenType::AS},
     {"null",      TokenType::NULL_KW},
     {"true",      TokenType::TRUE_KW},
@@ -150,6 +146,41 @@ Token Lexer::lexNumber() {
         if (peek() == '+' || peek() == '-') num += advance();
         while (std::isdigit(peek())) num += advance();
     }
+    double multiplier = 1.0;
+    bool hasSuffix = false;
+
+    if (peek() == 'm' && peek(1) == 's') {
+        advance(); advance();
+        multiplier = 1.0;
+        hasSuffix = true;
+    } else if (peek() == 'u' && peek(1) == 's') {
+        advance(); advance();
+        multiplier = 0.001;
+        hasSuffix = true;
+    } else if (peek() == 's') {
+        advance();
+        multiplier = 1000.0;
+        hasSuffix = true;
+    } else if (peek() == 'm') {
+        advance();
+        multiplier = 60000.0;
+        hasSuffix = true;
+    } else if (peek() == 'h') {
+        advance();
+        multiplier = 3600000.0;
+        hasSuffix = true;
+    } else if (peek() == 'd') {
+        advance();
+        multiplier = 86400000.0;
+        hasSuffix = true;
+    }
+
+    if (hasSuffix) {
+        double val = std::stod(num) * multiplier;
+        num = std::to_string(val);
+        isFloat = true;
+    }
+
     return Token(isFloat ? TokenType::FLOAT_LIT : TokenType::INT_LIT, num, startLine, col_);
 }
 
@@ -406,7 +437,13 @@ std::vector<Token> Lexer::tokenize() {
             case '[':  tokens.push_back(Token(TokenType::LBRACKET, "[", startLine, startCol)); break;
             case ']':  tokens.push_back(Token(TokenType::RBRACKET, "]", startLine, startCol)); break;
             case ';':  tokens.push_back(Token(TokenType::SEMICOLON,";", startLine, startCol)); break;
-            case ':':  tokens.push_back(Token(TokenType::COLON,    ":", startLine, startCol)); break;
+            case ':':
+                if (match(':')) {
+                    tokens.push_back(Token(TokenType::DOUBLE_COLON, "::", startLine, startCol));
+                } else {
+                    tokens.push_back(Token(TokenType::COLON,    ":", startLine, startCol));
+                }
+                break;
             case ',':  tokens.push_back(Token(TokenType::COMMA,    ",", startLine, startCol)); break;
             case '.':  tokens.push_back(Token(TokenType::DOT,      ".", startLine, startCol)); break;
             case '@':  tokens.push_back(Token(TokenType::AT,       "@", startLine, startCol)); break;
