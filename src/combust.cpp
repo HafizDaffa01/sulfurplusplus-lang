@@ -10,6 +10,8 @@
 #include "../include/interpreter.hpp"
 #include "../include/error.hpp"
 #include <iomanip>
+#include <csignal>
+#include <cstdlib>
 
 static std::string formatDuration(double ms) {
     double us = ms * 1000.0;
@@ -66,7 +68,7 @@ static void runREPL(bool debug) {
             auto tokens = lex.tokenize();
             Parser par(std::move(tokens));
             auto stmts = par.parse();
-            interp.run(stmts);
+            interp.run(stmts, "<repl>");
             if (debug) {
                 auto end = std::chrono::high_resolution_clock::now();
                 double duration = std::chrono::duration<double, std::milli>(end - start).count();
@@ -92,7 +94,7 @@ static int runFile(const std::string& filename, bool debug, bool watch) {
             Parser par(std::move(tokens));
             auto stmts = par.parse();
             Interpreter interp(debug);
-            interp.run(stmts);
+            interp.run(stmts, filename);
             if (debug) {
                 auto end = std::chrono::high_resolution_clock::now();
                 double duration = std::chrono::duration<double, std::milli>(end - start).count();
@@ -130,6 +132,11 @@ static int runFile(const std::string& filename, bool debug, bool watch) {
 }
 
 int main(int argc, char* argv[]) {
+    std::signal(SIGINT, [](int sig) {
+        std::cout << "\n[E_KEYBOARD_INT!] Whoops! Keyboard interrupt called!\n" << std::flush;
+        std::_Exit(sig);
+    });
+
     bool debug = false;
     bool watch = false;
     std::string filename;

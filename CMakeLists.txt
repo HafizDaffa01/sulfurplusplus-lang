@@ -17,7 +17,7 @@ endif()
 
 # Explicitly list source files for combust to avoid including fuse.cpp
 set(COMBUST_SOURCES
-    src/main.cpp
+    src/combust.cpp
     src/lexer.cpp
     src/parser.cpp
     src/interpreter.cpp

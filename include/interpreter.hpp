@@ -11,7 +11,7 @@ class Interpreter {
 public:
     explicit Interpreter(bool debugMode = false);
 
-    void run(const std::vector<StmtPtr>& stmts);
+    void run(const std::vector<StmtPtr>& stmts, const std::string& filepath = "");
     void injectBuiltinsIntoGlobal();
     void setStdout(std::ostream* out) { stdout_ = out; }
     void setStderr(std::ostream* err) { stderr_ = err; }
@@ -27,6 +27,10 @@ private:
 
     // Deferred blocks stack
     std::vector<std::vector<Stmt*>> deferStack_;
+
+    // Current file stack
+    std::vector<std::string> fileStack_;
+    std::string currentFile() const { return fileStack_.empty() ? "" : fileStack_.back(); }
 
     // Registry for modules that export themselves
     std::unordered_map<std::string, ValuePtr> exportedModules_;

@@ -20,13 +20,13 @@ Interpreter::Interpreter(bool debugMode)
   globalEnv_ = std::make_shared<Environment>();
   currentEnv_ = globalEnv_;
   registerBuiltins();
-  injectBuiltinsIntoGlobal();
 }
 
 // ─── run
 // ──────────────────────────────────────────────────────────────────────
 
-void Interpreter::run(const std::vector<StmtPtr> &stmts) {
+void Interpreter::run(const std::vector<StmtPtr> &stmts, const std::string& filepath) {
+  fileStack_.push_back(filepath);
   deferStack_.push_back({});
   try {
     for (auto &s : stmts)
@@ -39,6 +39,7 @@ void Interpreter::run(const std::vector<StmtPtr> &stmts) {
        ++it)
     execStmt(**it);
   deferStack_.pop_back();
+  fileStack_.pop_back();
 }
 
 void Interpreter::injectBuiltinsIntoGlobal() {
@@ -336,13 +337,32 @@ void Interpreter::execImport(const ImportStmt &s) {
   std::string pkgKey = s.pkg;
   if (!pkgKey.empty() && pkgKey[0] == '@') pkgKey = pkgKey.substr(1);
 
+  bool noLibName = false;
+  for (const auto& flag : s.flags) {
+      if (flag == "NOLIBNAME" || flag == "FULL") {
+          noLibName = true;
+      }
+  }
+
+  auto defineModuleExports = [&](ValuePtr dictVal) {
+      if (noLibName) {
+          if (dictVal->isDict()) {
+              for (const auto& kv : dictVal->asDict()->pairs) {
+                  currentEnv_->define(kv.first->toString(), kv.second, true);
+              }
+          }
+      } else {
+          currentEnv_->define(alias, dictVal, true);
+      }
+  };
+
   // Check if module is already cached (try both with and without @)
   if (exportedModules_.count(s.pkg)) {
-    currentEnv_->define(alias, exportedModules_[s.pkg], true);
+    defineModuleExports(exportedModules_[s.pkg]);
     return;
   }
   if (exportedModules_.count(pkgKey)) {
-    currentEnv_->define(alias, exportedModules_[pkgKey], true);
+    defineModuleExports(exportedModules_[pkgKey]);
     return;
   }
 
@@ -386,6 +406,7 @@ void Interpreter::execImport(const ImportStmt &s) {
   auto moduleEnv = std::make_shared<Environment>(globalEnv_);
   auto savedEnv = currentEnv_;
   currentEnv_ = moduleEnv;
+  fileStack_.push_back(path);
 
   try {
     for (auto& stmt : stmts) {
@@ -393,9 +414,11 @@ void Interpreter::execImport(const ImportStmt &s) {
     }
   } catch (...) {
     currentEnv_ = savedEnv;
+    fileStack_.pop_back();
     throw;
   }
   currentEnv_ = savedEnv;
+  fileStack_.pop_back();
 
   auto ns = std::make_shared<DictValue>();
   for (const auto& kv : moduleEnv->vars()) {
@@ -405,7 +428,7 @@ void Interpreter::execImport(const ImportStmt &s) {
   }
 
   ValuePtr dictVal = makeDict(ns);
-  currentEnv_->define(alias, dictVal, true);
+  defineModuleExports(dictVal);
   
   if (moduleEnv->hasLocal("__export_alias__")) {
       std::string exportAlias = moduleEnv->get("__export_alias__", 0)->asStr();
@@ -604,6 +627,9 @@ ValuePtr Interpreter::evalPSString(const PSStringExpr &e) {
 }
 
 ValuePtr Interpreter::evalIdent(const IdentExpr &e) {
+  if (e.name == "this" && !currentEnv_->has("this")) {
+    return makeStr(currentFile());
+  }
   return currentEnv_->get(e.name, e.line);
 }
 

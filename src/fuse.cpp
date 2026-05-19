@@ -6,6 +6,9 @@
 #include <vector>
 #include <cstdlib>
 #include <algorithm>
+#include <csignal>
+#include <thread>
+#include <chrono>
 
 namespace fs = std::filesystem;
 
@@ -14,6 +17,14 @@ namespace fs = std::filesystem;
 static bool isWhitespace(const std::string& s) {
     for (char c : s)
         if (!std::isspace(static_cast<unsigned char>(c))) return false;
+    return true;
+}
+
+static bool getInput(std::string& output) {
+    if (!std::getline(std::cin, output)) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+        return false;
+    }
     return true;
 }
 
@@ -160,6 +171,7 @@ static void writeMockPackage(const fs::path& dest, const std::string& user, cons
     std::ofstream f(dest);
     f << "// Mock package @" << user << "/" << repo << "\n"
       << "export this as @" << user << "/" << repo << ";\n\n"
+      << "import std/builtin --use=[NOLIBNAME];\n\n"
       << "fn hello() {\n"
       << "    Terminal.Out << \"Hello from @" << user << "/" << repo << "!\\n\";\n"
       << "}\n";
@@ -175,13 +187,13 @@ static void handleInit() {
     std::string defaultName = fs::current_path().filename().string();
     if (defaultName.empty()) defaultName = "sulfur-project";
 
-    std::cout << "Enter project name (" << defaultName << "): ";
-    std::getline(std::cin, projName);
+    std::cout << "Enter project name (default: " << defaultName << "): ";
+    if (!getInput(projName)) return;
     if (isWhitespace(projName)) projName = defaultName;
     for (char& c : projName) if (c == ' ') c = '-';
 
     std::cout << "Initialize git? (y/n) [y]: ";
-    std::getline(std::cin, useGitInput);
+    if (!getInput(useGitInput)) return;
     bool useGit = isWhitespace(useGitInput) ||
         std::tolower(static_cast<unsigned char>(useGitInput[0])) != 'n';
 
@@ -215,6 +227,7 @@ static void handleInit() {
     if (!fs::exists("main.sfpp")) {
         std::ofstream f("main.sfpp");
         f << "// " << projName << " - entry point\n\n"
+          << "import std/builtin --use=[NOLIBNAME];\n\n"
           << "Terminal.Out << \"Hello from " << projName << "!\\n\";\n";
         std::cout << "  [CREATED] main.sfpp\n";
     }
@@ -470,20 +483,20 @@ static void handlePublish() {
     std::string defaultDir = fs::current_path().filename().string();
 
     std::cout << "Package name (" << defaultDir << "): ";
-    std::getline(std::cin, pkgName);
+    if (!getInput(pkgName)) return;
     if (isWhitespace(pkgName)) pkgName = defaultDir;
     for (char& c : pkgName) if (c == ' ') c = '-';
 
     std::cout << "Your GitHub username: ";
-    std::getline(std::cin, userName);
+    if (!getInput(userName)) return;
     if (isWhitespace(userName)) userName = "anonymous";
 
     std::cout << "Version (1.0.0): ";
-    std::getline(std::cin, pkgVersion);
+    if (!getInput(pkgVersion)) return;
     if (isWhitespace(pkgVersion)) pkgVersion = "1.0.0";
 
     std::cout << "Description: ";
-    std::getline(std::cin, pkgDesc);
+    if (!getInput(pkgDesc)) return;
     if (isWhitespace(pkgDesc)) pkgDesc = "A Sulfur++ package";
 
     std::cout << "\nCreating package template...\n";
@@ -504,6 +517,7 @@ static void handlePublish() {
         f << "// " << userName << "/" << pkgName << " v" << pkgVersion << "\n"
           << "// " << pkgDesc << "\n\n"
           << "export this as " << userName << "/" << pkgName << ";\n\n"
+          << "import std/builtin --use=[NOLIBNAME];\n\n"
           << "// Public API\n"
           << "fn hello() {\n"
           << "    Terminal.Out << \"Hello from " << userName << "/" << pkgName << "!\\n\";\n"
@@ -584,6 +598,11 @@ static void handlePublish() {
 // ─── main ──────────────────────────────────────────────────────────────────────
 
 int main(int argc, char* argv[]) {
+    std::signal(SIGINT, [](int sig) {
+        std::cout << "\n[E_KEYBOARD_INT!] Whoops! Keyboard interrupt called!\n" << std::flush;
+        std::_Exit(sig);
+    });
+
     if (argc < 2) { printHelp(); return 0; }
 
     std::string cmd = argv[1];
