@@ -260,6 +260,18 @@ struct ExportStmt {
   int line;
 };
 
+struct ExposeStmt {
+  std::string name;
+  std::string alias;
+  int line;
+};
+
+struct OverwriteStmt {
+  std::string target;
+  ExprPtr value;
+  int line;
+};
+
 struct UnsafeStmt {
   StmtPtr body;
   int line;
@@ -268,12 +280,20 @@ struct DeferStmt {
   StmtPtr body;
   int line;
 };
+struct TryCatchStmt {
+  StmtPtr tryBody;    // block to attempt
+  std::string catchVar; // variable name to bind the error
+  StmtPtr catchBody;  // block to execute on error
+  StmtPtr finallyBody; // optional finally block (may be nullptr)
+  int line;
+};
 
 struct Stmt {
   std::variant<VarDeclStmt, FnDeclStmt, ReturnStmt, BreakStmt, ContinueStmt,
                BlockStmt, IfStmt, WhileStmt, ForStmt, ClassDeclStmt,
                StructDeclStmt, InterfaceDeclStmt, ExprStmt, StreamOutStmt,
-               ImportStmt, ExportStmt, UnsafeStmt, DeferStmt>
+               ImportStmt, ExportStmt, UnsafeStmt, DeferStmt, TryCatchStmt,
+               ExposeStmt, OverwriteStmt>
       data;
 
   template <typename T> Stmt(T &&v) : data(std::forward<T>(v)) {}

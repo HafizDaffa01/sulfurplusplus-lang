@@ -161,10 +161,16 @@ StmtPtr Parser::parseStmt() {
     return parseImport();
   if (check(TokenType::EXPORT))
     return parseExport();
+  if (check(TokenType::EXPOSE))
+    return parseExpose();
+  if (check(TokenType::OVERWRITE))
+    return parseOverwrite();
   if (check(TokenType::UNSAFE))
     return parseUnsafe();
   if (check(TokenType::DEFER))
     return parseDefer();
+  if (check(TokenType::TRY))
+    return parseTryCatch();
 
   if (check(TokenType::BREAK)) {
     advance();
@@ -462,6 +468,39 @@ StmtPtr Parser::parseExport() {
   return std::make_unique<Stmt>(ExportStmt{alias, line});
 }
 
+StmtPtr Parser::parseExpose() {
+  int line = peek().line;
+  advance(); // 'expose'
+  
+  std::string name = expect(TokenType::STRING_LIT, "Expected string literal after 'expose'").value;
+  expect(TokenType::AS, "Expected 'as' after expose name");
+  std::string alias = expect(TokenType::IDENT, "Expected alias identifier").value;
+  
+  expect(TokenType::SEMICOLON, "Expected ';' after expose statement");
+  return std::make_unique<Stmt>(ExposeStmt{name, alias, line});
+}
+
+StmtPtr Parser::parseOverwrite() {
+  int line = peek().line;
+  advance(); // 'overwrite'
+  
+  std::string target;
+  while (!isAtEnd()) {
+    if (check(TokenType::IDENT) && peek().value == "with") {
+      advance(); // consume 'with'
+      break;
+    }
+    if (check(TokenType::ASSIGN)) {
+      advance(); // consume '='
+      break;
+    }
+    target += advance().value;
+  }
+  
+  auto value = parseExpr();
+  expect(TokenType::SEMICOLON, "Expected ';' after overwrite statement");
+  return std::make_unique<Stmt>(OverwriteStmt{target, std::move(value), line});
+}
 StmtPtr Parser::parseUnsafe() {
   int line = peek().line;
   advance();
@@ -474,6 +513,33 @@ StmtPtr Parser::parseDefer() {
   advance();
   auto body = parseBlock();
   return std::make_unique<Stmt>(DeferStmt{std::move(body), line});
+}
+
+StmtPtr Parser::parseTryCatch() {
+  int line = peek().line;
+  advance(); // consume 'try'
+  auto tryBody = parseBlock();
+
+  std::string catchVar = "e";
+  StmtPtr catchBody;
+  if (check(TokenType::CATCH)) {
+    advance(); // consume 'catch'
+    expect(TokenType::LPAREN, "Expected '(' after 'catch'");
+    catchVar = expect(TokenType::IDENT, "Expected catch variable name").value;
+    expect(TokenType::RPAREN, "Expected ')' after catch variable");
+    catchBody = parseBlock();
+  }
+
+  StmtPtr finallyBody;
+  // check for optional 'finally' (parsed as IDENT since it's not a keyword yet)
+  if (check(TokenType::IDENT) && peek().value == "finally") {
+    advance();
+    finallyBody = parseBlock();
+  }
+
+  return std::make_unique<Stmt>(TryCatchStmt{
+      std::move(tryBody), catchVar, std::move(catchBody),
+      std::move(finallyBody), line});
 }
 
 StmtPtr Parser::parseExprStmt() {
@@ -713,6 +779,24 @@ ExprPtr Parser::parsePostfix() {
 
 ExprPtr Parser::parsePrimary() {
   int line = peek().line;
+
+  if (check(TokenType::FN)) {
+    advance(); // consume 'fn'
+    std::string name;
+    if (check(TokenType::IDENT)) {
+      name = advance().value;
+    }
+    auto params = parseParamList();
+    std::string retType;
+    if (match(TokenType::COLON)) {
+      retType = parseType();
+    } else if (check(TokenType::IDENT) && peek().value == "->") {
+      advance(); // consume ->
+      retType = parseType();
+    }
+    auto body = parseBlock();
+    return std::make_unique<Expr>(LambdaExpr{std::move(params), std::move(retType), std::move(body), line});
+  }
 
   if (check(TokenType::INT_LIT)) {
     auto val = std::stoll(advance().value);

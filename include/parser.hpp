@@ -35,8 +35,11 @@ private:
 
     StmtPtr parseImport();
     StmtPtr parseExport();
+    StmtPtr parseExpose();
+    StmtPtr parseOverwrite();
     StmtPtr parseUnsafe();
     StmtPtr parseDefer();
+    StmtPtr parseTryCatch();
     StmtPtr parseExprStmt();
 
     // Expressions

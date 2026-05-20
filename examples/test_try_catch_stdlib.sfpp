@@ -1,0 +1,82 @@
+// examples/test_try_catch_stdlib.sfpp
+
+import std/TIO as tio;
+import std/string as string_lib;
+import std/collections as col;
+import std/io as io;
+
+let Terminal = __builtins__.Terminal;
+
+Terminal.Out << "=== Testing Sulfur++ Advanced Error Handling & Stdlibs ===" << Terminal.EOL;
+
+// 1. Test Try-Catch with normal exceptions and NameError hints
+try {
+    Terminal.Out << "Attempting to access undefined variable to trigger NameError..." << Terminal.EOL;
+    let x = nonExistentVariable;
+} catch (e) {
+    Terminal.Out << "Successfully caught NameError!" << Terminal.EOL;
+    Terminal.Out << "Error Message: " << e.message << Terminal.EOL;
+    Terminal.Out << "Error Code:    " << e.code << Terminal.EOL;
+    Terminal.Out << "Suggested Hint: " << e.hint << Terminal.EOL;
+    Terminal.Out << "Line Number:   " << e.line << Terminal.EOL;
+} finally {
+    Terminal.Out << "Finally block executed successfully!" << Terminal.EOL;
+}
+
+Terminal.Out << Terminal.EOL << "--- Testing TIO Error Builders ---" << Terminal.EOL;
+
+// 2. Test TIO custom error object builders
+let rawErr = tio.E("User operation failed");
+let enrichedErr = tio.withContext(
+    tio.withHint(
+        tio.withCode(
+            tio.withCategory(rawErr, "USER_AUTH"), 
+            "AUTH_FAILED_401"
+        ), 
+        "Please check your password and try again."
+    ), 
+    {"username": "daffa_user"}
+);
+
+Terminal.Out << "Enriched Error details:" << Terminal.EOL;
+Terminal.Out << "  Category: " << enrichedErr.category << Terminal.EOL;
+Terminal.Out << "  Code:     " << enrichedErr.code << Terminal.EOL;
+Terminal.Out << "  Hint:     " << enrichedErr.hint << Terminal.EOL;
+Terminal.Out << "  Context:  " << enrichedErr.context.username << Terminal.EOL;
+
+Terminal.Out << Terminal.EOL << "--- Testing Stdlibs (string, collections, io) ---" << Terminal.EOL;
+
+// 3. Test string utility module
+let rawStr = "  Hello, Sulfur++ Developers!  ";
+let trimmed = string_lib.trim(rawStr);
+let upper = string_lib.toUpper(trimmed);
+Terminal.Out << "Original: '" << rawStr << "'" << Terminal.EOL;
+Terminal.Out << "Trimmed:  '" << trimmed << "'" << Terminal.EOL;
+Terminal.Out << "Upper:    '" << upper << "'" << Terminal.EOL;
+Terminal.Out << "Splitted: " << string_lib.split(trimmed, ", ") << Terminal.EOL;
+
+// 4. Test collections utility module
+let numbers = [5, 2, 9, 1, 7, 3];
+let sortedNums = col.sort(numbers);
+let mappedNums = col.map(sortedNums, fn(x) { return x * 2; });
+let filteredNums = col.filter(mappedNums, fn(x) { return x > 10; });
+
+Terminal.Out << "Original numbers:  " << numbers << Terminal.EOL;
+Terminal.Out << "Sorted numbers:    " << sortedNums << Terminal.EOL;
+Terminal.Out << "Mapped (*2):       " << mappedNums << Terminal.EOL;
+Terminal.Out << "Filtered (>10):    " << filteredNums << Terminal.EOL;
+
+// 5. Test IO utility module
+let tempFile = "examples/temp_output.txt";
+Terminal.Out << "Writing text to " << tempFile << "..." << Terminal.EOL;
+io.writeFile(tempFile, "Hello from the new std/io module!\nWelcome to Sulfur++.");
+if (io.fileExists(tempFile)) {
+    Terminal.Out << "File exists! Reading back content:" << Terminal.EOL;
+    let content = io.readFile(tempFile);
+    Terminal.Out << "--- Content ---" << Terminal.EOL << content << Terminal.EOL << "---------------" << Terminal.EOL;
+    Terminal.Out << "Deleting temporary file..." << Terminal.EOL;
+    io.deleteFile(tempFile);
+    Terminal.Out << "File still exists? " << io.fileExists(tempFile) << Terminal.EOL;
+}
+
+Terminal.Out << Terminal.EOL << "=== All Tests Completed Successfully! ===" << Terminal.EOL;

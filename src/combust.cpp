@@ -88,6 +88,7 @@ static void runREPL(bool debug) {
             std::cerr << "[" << e.code << "]";
             if (e.line > 0) std::cerr << " line " << e.line;
             std::cerr << ": " << e.what() << "\n";
+            if (!e.hint.empty()) std::cerr << "  hint: " << e.hint << "\n";
         } catch (std::exception& e) {
             std::cerr << "Error: " << e.what() << "\n";
         }
@@ -129,6 +130,7 @@ static int runFile(const std::string& filename, bool debug, bool watch) {
         } catch (SulfurError& e) {
             std::string loc = e.line > 0 ? " line " + std::to_string(e.line) : "";
             std::cerr << "[" << e.code << "]" << loc << ": " << e.what() << "\n";
+            if (!e.hint.empty()) std::cerr << "  hint: " << e.hint << "\n";
             return 1;
         } catch (std::exception& e) {
             std::cerr << "Error: " << e.what() << "\n";

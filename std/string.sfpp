@@ -1,0 +1,25 @@
+// std/string.sfpp
+export this as std/string;
+
+// String manipulation — all backed by native builtins
+
+let trim        = __builtins__.str_trim;        // trim(s) -> str
+let trimLeft    = __builtins__.str_trimleft;    // trimLeft(s) -> str
+let trimRight   = __builtins__.str_trimright;   // trimRight(s) -> str
+let toUpper     = __builtins__.str_upper;       // toUpper(s) -> str
+let toLower     = __builtins__.str_lower;       // toLower(s) -> str
+let startsWith  = __builtins__.str_startswith;  // startsWith(s, prefix) -> bool
+let endsWith    = __builtins__.str_endswith;    // endsWith(s, suffix) -> bool
+let contains    = __builtins__.str_contains;    // contains(s, sub) -> bool
+let replace     = __builtins__.str_replace;     // replace(s, from, to) -> str
+let split       = __builtins__.str_split;       // split(s, delim) -> list
+let join        = __builtins__.str_join;        // join(list, delim) -> str
+let repeat      = __builtins__.str_repeat;      // repeat(s, n) -> str
+let indexOf     = __builtins__.str_indexof;     // indexOf(s, sub) -> int (-1 if not found)
+let slice       = __builtins__.str_slice;       // slice(s, start, end?) -> str
+let padLeft     = __builtins__.str_padleft;     // padLeft(s, width, char?) -> str
+let padRight    = __builtins__.str_padright;    // padRight(s, width, char?) -> str
+let reverse     = __builtins__.str_reverse;     // reverse(s) -> str
+let isDigit     = __builtins__.str_isdigit;     // isDigit(s) -> bool
+let isAlpha     = __builtins__.str_isalpha;     // isAlpha(s) -> bool
+let isAlphaNum  = __builtins__.str_isalphanum;  // isAlphaNum(s) -> bool

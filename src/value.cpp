@@ -14,6 +14,14 @@ ValuePtr DictValue::get(const std::string &key) const {
   return nullptr;
 }
 
+bool DictValue::has(const std::string &key) const {
+  for (auto &p : pairs) {
+    if (p.first->isStr() && p.first->asStr() == key)
+      return true;
+  }
+  return false;
+}
+
 void DictValue::set(const std::string &key, ValuePtr val) {
   for (auto &p : pairs) {
     if (p.first->isStr() && p.first->asStr() == key) {

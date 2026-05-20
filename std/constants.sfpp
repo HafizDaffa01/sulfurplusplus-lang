@@ -1,0 +1,18 @@
+export this as std/constants;
+
+let SECOND = __builtins__.SECOND;
+let MINUTE = __builtins__.MINUTE;
+let HOUR = __builtins__.HOUR;
+let DAY = __builtins__.DAY;
+let WEEK = __builtins__.WEEK;
+
+let RUNTIME_VERSION = __builtins__.RUNTIME_VERSION;
+let SULFUR_VERSION = __builtins__.SULFUR_VERSION;
+let FUSE_VERSION = __builtins__.FUSE_VERSION;
+let COMBUST_VERSION = __builtins__.COMBUST_VERSION;
+let BUILD_MODE = __builtins__.BUILD_MODE;
+let DEBUG_MODE = __builtins__.DEBUG_MODE;
+
+let OBJ_NAME = __builtins__.OBJ_NAME;
+let GET_ITEM = __builtins__.GET_ITEM;
+let PROPS = __builtins__.PROPS;

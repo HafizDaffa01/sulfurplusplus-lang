@@ -136,10 +136,16 @@ void Interpreter::execStmt(const Stmt &s) {
           execImport(node);
         else if constexpr (std::is_same_v<T, ExportStmt>)
           execExport(node);
+        else if constexpr (std::is_same_v<T, ExposeStmt>)
+          execExpose(node);
+        else if constexpr (std::is_same_v<T, OverwriteStmt>)
+          execOverwrite(node);
         else if constexpr (std::is_same_v<T, UnsafeStmt>)
           execUnsafe(node);
         else if constexpr (std::is_same_v<T, DeferStmt>)
           execDefer(node);
+        else if constexpr (std::is_same_v<T, TryCatchStmt>)
+          execTryCatch(node);
       },
       s.data);
 }
@@ -414,6 +420,9 @@ void Interpreter::execImport(const ImportStmt &s) {
   Parser par(std::move(tokens));
   auto stmts = par.parse();
 
+  moduleASTs_.push_back(std::move(stmts));
+  auto& runStmts = moduleASTs_.back();
+
   auto moduleEnv = std::make_shared<Environment>(globalEnv_);
   auto savedEnv = currentEnv_;
   currentEnv_ = moduleEnv;
@@ -427,7 +436,7 @@ void Interpreter::execImport(const ImportStmt &s) {
   fileStack_.push_back(absPath);
 
   try {
-    for (auto& stmt : stmts) {
+    for (auto& stmt : runStmts) {
       execStmt(*stmt);
     }
   } catch (...) {
@@ -463,6 +472,39 @@ void Interpreter::execExport(const ExportStmt &s) {
   env->define("__export_alias__", makeStr(s.alias), true);
 }
 
+void Interpreter::execExpose(const ExposeStmt &s) {
+  auto builtinsVal = globalEnv_->get("__builtins__");
+  if (builtinsVal && builtinsVal->isDict()) {
+      auto dict = builtinsVal->asDict();
+      if (dict->has(s.name)) {
+          currentEnv_->define(s.alias, dict->get(s.name));
+      } else {
+          throw RuntimeError("Cannot expose unknown native symbol '" + s.name + "'", s.line, "E_NATIVE_404");
+      }
+  }
+}
+
+void Interpreter::execOverwrite(const OverwriteStmt &s) {
+  auto val = evalExpr(*s.value);
+  size_t dotPos = s.target.find('.');
+  if (dotPos == std::string::npos) {
+      if (currentEnv_->has(s.target)) {
+          currentEnv_->set(s.target, val);
+      } else {
+          currentEnv_->define(s.target, val);
+      }
+  } else {
+      std::string base = s.target.substr(0, dotPos);
+      std::string prop = s.target.substr(dotPos + 1);
+      auto baseVal = currentEnv_->get(base, s.line);
+      if (baseVal->isDict()) {
+          baseVal->asDict()->set(prop, val);
+      } else {
+          throw RuntimeError("Cannot overwrite property on non-dict target '" + base + "'", s.line, "E_RUNTIME_405");
+      }
+  }
+}
+
 void Interpreter::execUnsafe(const UnsafeStmt &s) {
   trace("Entering unsafe block");
   execStmt(*s.body);
@@ -472,6 +514,48 @@ void Interpreter::execUnsafe(const UnsafeStmt &s) {
 void Interpreter::execDefer(const DeferStmt &s) {
   if (!deferStack_.empty())
     deferStack_.back().push_back(s.body.get());
+}
+
+void Interpreter::execTryCatch(const TryCatchStmt &s) {
+  auto runFinally = [&]() {
+    if (s.finallyBody) {
+      try { execStmt(*s.finallyBody); } catch (...) {}
+    }
+  };
+
+  try {
+    execStmt(*s.tryBody);
+    runFinally();
+  } catch (const FatalError&) {
+    // FatalError is always re-thrown — cannot be caught
+    runFinally();
+    throw;
+  } catch (const SulfurError& err) {
+    runFinally();
+    if (s.catchBody) {
+      // Build error dict and bind to catchVar
+      auto errDict = std::make_shared<DictValue>();
+      errDict->set("message", makeStr(err.what()));
+      errDict->set("code",    makeStr(err.code));
+      errDict->set("hint",    makeStr(err.hint));
+      errDict->set("line",    makeInt(err.line));
+      auto catchEnv = std::make_shared<Environment>(currentEnv_);
+      catchEnv->define(s.catchVar, makeDict(errDict), true);
+      execBlock(*std::get_if<BlockStmt>(&s.catchBody->data), catchEnv);
+    }
+  } catch (const std::exception& ex) {
+    runFinally();
+    if (s.catchBody) {
+      auto errDict = std::make_shared<DictValue>();
+      errDict->set("message", makeStr(std::string(ex.what())));
+      errDict->set("code",    makeStr("E_RUNTIME_500"));
+      errDict->set("hint",    makeStr(""));
+      errDict->set("line",    makeInt(-1));
+      auto catchEnv = std::make_shared<Environment>(currentEnv_);
+      catchEnv->define(s.catchVar, makeDict(errDict), true);
+      execBlock(*std::get_if<BlockStmt>(&s.catchBody->data), catchEnv);
+    }
+  }
 }
 
 // ─── evalExpr
@@ -666,23 +750,155 @@ ValuePtr Interpreter::evalBinary(const BinaryExpr &e) {
     return makeBool(evalExpr(*e.right)->truthy());
   }
 
-  // Stream output operator << (Terminal.Out << "Hello")
+  // Stream output / Bitwise Left Shift operator <<
   if (e.op == "<<") {
     auto left = evalExpr(*e.left);
-    auto right = evalExpr(*e.right);
-    // Check if left is a stream object
-    std::string stream = left->toString();
-    std::string msg = right->toString();
-    if (stream == "<Terminal.Out>" || stream == "<stdout>") {
-      print(msg);
-    } else if (stream == "<Terminal.Err>" || stream == "<stderr>") {
-      printErr(msg);
-    } else if (stream == "<Terminal.Warn>") {
-      printErr("[WARN] " + msg);
-    } else {
-      print(msg);
+    std::string stream;
+    if (left->isStr()) {
+      stream = left->asStr();
+    } else if (left->isDict()) {
+      if (auto marker = left->asDict()->get("__stream__")) {
+        stream = marker->asStr();
+      }
     }
-    return left; // return stream for chaining
+
+    if (stream == "<Terminal.Out>" || stream == "<stdout>" ||
+        stream == "<Terminal.Err>" || stream == "<stderr>" ||
+        stream == "<Terminal.Warn>" || stream == "<stdwarn>" ||
+        stream == "<Terminal.Return>") {
+      auto right = evalExpr(*e.right);
+      
+      if (stream == "<Terminal.Return>") {
+        std::string severity = "E";
+        std::string msg = "Error occurred";
+        if (right->isFn()) {
+          std::string name = right->asFn()->name;
+          if (name == "TIO.E" || name == "TIO.Err" || name == "TIO.err") {
+            severity = "E";
+            msg = "Error occurred";
+          } else if (name == "TIO.FE" || name == "TIO.F_Err" || name == "TIO.f_err") {
+            severity = "FE";
+            msg = "Fatal error occurred";
+          } else if (name == "TIO.W" || name == "TIO.w") {
+            severity = "W";
+            msg = "Warning occurred";
+          }
+        } else if (right->isDict()) {
+          auto sVal = right->asDict()->get("severity");
+          auto mVal = right->asDict()->get("message");
+          auto cVal = right->asDict()->get("code");
+          auto catVal = right->asDict()->get("category");
+          if (sVal) severity = sVal->toString();
+          if (mVal) msg = mVal->toString();
+          // Prepend [category] and/or [code] to the message if present
+          std::string prefix;
+          if (catVal) prefix += "[" + catVal->toString() + "] ";
+          if (cVal)   prefix += "[" + cVal->toString() + "] ";
+          if (!prefix.empty()) msg = prefix + msg;
+        } else {
+          msg = right->toString();
+        }
+
+        if (severity == "W") {
+          printErr("[WARN] line " + std::to_string(e.line) + ": " + msg + "\n");
+        } else if (severity == "FE") {
+          throw FatalError(msg, e.line, "FE_TIO_Err");
+        } else {
+          throw RuntimeError(msg, e.line, "E_TIO_Err");
+        }
+        return left;
+      }
+
+      std::string msg = right->toString();
+      if (stream == "<Terminal.Out>" || stream == "<stdout>") {
+        print(msg);
+      } else if (stream == "<Terminal.Err>" || stream == "<stderr>") {
+        printErr(msg);
+      } else if (stream == "<Terminal.Warn>" || stream == "<stdwarn>") {
+        printErr("[WARN] " + msg);
+      }
+      return left; // return stream for chaining
+    } else {
+      auto right = evalExpr(*e.right);
+      if (left->isInt() && right->isInt()) {
+        return makeInt(left->asInt() << right->asInt());
+      }
+      throw TypeError("Cannot perform bitwise left shift on non-integer types", e.line);
+    }
+  }
+
+  // Stream input / Bitwise Right Shift operator >>
+  if (e.op == ">>") {
+    auto left = evalExpr(*e.left);
+    std::string stream;
+    if (left->isStr()) {
+      stream = left->asStr();
+    } else if (left->isDict()) {
+      if (auto marker = left->asDict()->get("__stream__")) {
+        stream = marker->asStr();
+      }
+    }
+
+    if (stream == "<Terminal.In>" || stream == "<stdin>") {
+      std::string word;
+      if (stdin_) {
+        *stdin_ >> word;
+      }
+      auto newVal = makeStr(word);
+
+      if (auto *id = std::get_if<IdentExpr>(&e.right->data)) {
+        currentEnv_->set(id->name, newVal, e.line);
+      } else if (auto *idx = std::get_if<IndexExpr>(&e.right->data)) {
+        auto obj = evalExpr(*idx->object);
+        auto key = evalExpr(*idx->index);
+        if (obj->isList()) {
+          auto &elems = obj->asList()->elements;
+          int64_t i = key->asInt();
+          if (i < 0) i += elems.size();
+          if (i < 0 || (size_t)i >= elems.size())
+            throw IndexError("List index out of bounds", e.line);
+          elems[i] = newVal;
+        } else if (obj->isDict()) {
+          obj->asDict()->set(key->toString(), newVal);
+        } else {
+          throw TypeError("Cannot index-assign to " + obj->typeName(), e.line);
+        }
+      } else if (auto *mem = std::get_if<MemberExpr>(&e.right->data)) {
+        auto obj = evalExpr(*mem->object);
+        if (mem->op == "->") {
+          if (!obj->isPtr()) {
+            throw TypeError("Cannot use '->' on non-pointer object of type '" + obj->typeName() + "'. Use '.' instead.", e.line);
+          }
+          auto target = obj->asPtr()->target;
+          if (!target || !(*target)) {
+            throw RuntimeError("Null pointer dereference", e.line, "E_RUNTIME_403");
+          }
+          obj = *target;
+        } else if (mem->op == "." || mem->op == "?.") {
+          if (obj->isPtr()) {
+            throw TypeError("Cannot use '" + mem->op + "' on pointer object. Use '->' instead.", e.line);
+          }
+        }
+        if (obj->isClassInst()) {
+          obj->asClassInst()->members->set(mem->member, newVal, e.line);
+        } else if (obj->isStructInst()) {
+          obj->asStructInst()->fields[mem->member] = newVal;
+        } else if (obj->isDict()) {
+          obj->asDict()->set(mem->member, newVal);
+        } else {
+          throw RuntimeError("Cannot assign member '" + mem->member + "' on " + obj->typeName(), e.line);
+        }
+      } else {
+        throw RuntimeError("Invalid stream extraction target", e.line);
+      }
+      return left; // return stream for chaining
+    } else {
+      auto right = evalExpr(*e.right);
+      if (left->isInt() && right->isInt()) {
+        return makeInt(left->asInt() >> right->asInt());
+      }
+      throw TypeError("Cannot perform bitwise right shift on non-integer types", e.line);
+    }
   }
 
   auto l = evalExpr(*e.left);
@@ -1826,7 +2042,7 @@ void Interpreter::registerBuiltins() {
   builtins->set("WEEK", makeInt(604800));
 
   builtins->set("RUNTIME_VERSION", makeStr(__RUNTIME_VERSION__));
-  builtins->set("LANG_VERSION", makeStr(__LANG_VERSION__));
+  builtins->set("SULFUR_VERSION", makeStr(__SULFUR_VERSION__));
   builtins->set("FUSE_VERSION", makeStr(__FUSE_VERSION__));
   builtins->set("COMBUST_VERSION", makeStr(__COMBUST_VERSION__));
   builtins->set("BUILD_MODE", makeStr("debug"));
@@ -1841,7 +2057,8 @@ void Interpreter::registerBuiltins() {
                   "PROP_ASYNC",    "PROP_LAZY",         "PROP_CACHED",
                   "PROP_TEMP",     "PROP_NATIVE",       "PROP_PROTECTED",
                   "PROP_INTERNAL", "PROP_EXPERIMENTAL", "PROP_DEPRECATED",
-                  "PROP_LOCKED",   "PROP_OBSERVABLE"}) {
+                  "PROP_LOCKED",   "PROP_OBSERVABLE",
+                  "OBJ_NAME",      "GET_ITEM",          "PROPS"}) {
     builtins->set(p, makeStr(p));
   }
 
@@ -1856,11 +2073,14 @@ void Interpreter::registerBuiltins() {
   terminal->set("Warn", makeStr("<Terminal.Warn>"));
   terminal->set("err", makeStr("<Terminal.Err>"));
   terminal->set("Err", makeStr("<Terminal.Err>"));
+  terminal->set("Return", makeStr("<Terminal.Return>"));
+  terminal->set("return", makeStr("<Terminal.Return>"));
   terminal->set("EOL", makeStr("\n"));
   terminal->set("eol", makeStr("\n"));
 
   // Terminal.in is a special object
   auto terminalIn = std::make_shared<DictValue>();
+  terminalIn->set("__stream__", makeStr("<Terminal.In>"));
   // Terminal.in.read() - handled via callBuiltinMethod
   terminal->set("in", makeDict(terminalIn));
   terminal->set("In", makeDict(terminalIn));
@@ -1870,14 +2090,245 @@ void Interpreter::registerBuiltins() {
   builtins->set("stderr", makeStr("<Terminal.Err>"));
   builtins->set("stdin", makeStr("<Terminal.In>"));
   builtins->set("stdwarn", makeStr("<Terminal.Warn>"));
-  builtins->set("stdout", makeStr("<Terminal.Out>"));
-  builtins->set("stderr", makeStr("<Terminal.Err>"));
-  builtins->set("stdin", makeStr("<Terminal.In>"));
-  builtins->set("stdwarn", makeStr("<Terminal.Warn>"));
+
+  // TIO namespace
+  auto tio = std::make_shared<DictValue>();
+
+  // TIO.E - error
+  auto tioE = std::make_shared<FunctionValue>();
+  tioE->name = "TIO.E";
+  tioE->isNative = true;
+  tioE->native = [](std::vector<ValuePtr> args) -> ValuePtr {
+      std::string msg = args.empty() ? "Error occurred" : args[0]->toString();
+      auto errObj = std::make_shared<DictValue>();
+      errObj->set("__type__", makeStr("TIO_Error"));
+      errObj->set("severity", makeStr("E"));
+      errObj->set("message", makeStr(msg));
+      return makeDict(errObj);
+  };
+  tio->set("E", makeFn(tioE));
+
+  // TIO.FE - fatal error
+  auto tioFE = std::make_shared<FunctionValue>();
+  tioFE->name = "TIO.FE";
+  tioFE->isNative = true;
+  tioFE->native = [](std::vector<ValuePtr> args) -> ValuePtr {
+      std::string msg = args.empty() ? "Fatal error occurred" : args[0]->toString();
+      auto errObj = std::make_shared<DictValue>();
+      errObj->set("__type__", makeStr("TIO_Error"));
+      errObj->set("severity", makeStr("FE"));
+      errObj->set("message", makeStr(msg));
+      return makeDict(errObj);
+  };
+  tio->set("FE", makeFn(tioFE));
+
+  // TIO.W - warning
+  auto tioW = std::make_shared<FunctionValue>();
+  tioW->name = "TIO.W";
+  tioW->isNative = true;
+  tioW->native = [](std::vector<ValuePtr> args) -> ValuePtr {
+      std::string msg = args.empty() ? "Warning occurred" : args[0]->toString();
+      auto errObj = std::make_shared<DictValue>();
+      errObj->set("__type__", makeStr("TIO_Error"));
+      errObj->set("severity", makeStr("W"));
+      errObj->set("message", makeStr(msg));
+      return makeDict(errObj);
+  };
+  tio->set("W", makeFn(tioW));
+
+  // TIO.withCategory - attaches a category string to an error/warning dict
+  auto tioWithCategory = std::make_shared<FunctionValue>();
+  tioWithCategory->name = "TIO.withCategory";
+  tioWithCategory->isNative = true;
+  tioWithCategory->native = [](std::vector<ValuePtr> args) -> ValuePtr {
+      if (args.size() < 2)
+          throw std::runtime_error("TIO.withCategory expects 2 arguments: (errorDict, category)");
+      if (!args[0]->isDict())
+          throw std::runtime_error("TIO.withCategory: first argument must be a TIO error dict");
+      args[0]->asDict()->set("category", makeStr(args[1]->toString()));
+      return args[0];
+  };
+  tio->set("withCategory", makeFn(tioWithCategory));
+
+  // TIO.withCode - attaches an error/warning code string to an error/warning dict
+  auto tioWithCode = std::make_shared<FunctionValue>();
+  tioWithCode->name = "TIO.withCode";
+  tioWithCode->isNative = true;
+  tioWithCode->native = [](std::vector<ValuePtr> args) -> ValuePtr {
+      if (args.size() < 2)
+          throw std::runtime_error("TIO.withCode expects 2 arguments: (errorDict, code)");
+      if (!args[0]->isDict())
+          throw std::runtime_error("TIO.withCode: first argument must be a TIO error dict");
+      args[0]->asDict()->set("code", makeStr(args[1]->toString()));
+      return args[0];
+  };
+  tio->set("withCode", makeFn(tioWithCode));
+
+  // TIO.withHint - attaches a hint string to an error/warning dict
+  auto tioWithHint = std::make_shared<FunctionValue>();
+  tioWithHint->name = "TIO.withHint";
+  tioWithHint->isNative = true;
+  tioWithHint->native = [](std::vector<ValuePtr> args) -> ValuePtr {
+      if (args.size() < 2)
+          throw std::runtime_error("TIO.withHint expects 2 arguments: (errorDict, hint)");
+      if (!args[0]->isDict())
+          throw std::runtime_error("TIO.withHint: first argument must be a TIO error dict");
+      args[0]->asDict()->set("hint", makeStr(args[1]->toString()));
+      return args[0];
+  };
+  tio->set("withHint", makeFn(tioWithHint));
+
+  // TIO.withContext - attaches arbitrary context data to an error/warning dict
+  auto tioWithContext = std::make_shared<FunctionValue>();
+  tioWithContext->name = "TIO.withContext";
+  tioWithContext->isNative = true;
+  tioWithContext->native = [](std::vector<ValuePtr> args) -> ValuePtr {
+      if (args.size() < 2)
+          throw std::runtime_error("TIO.withContext expects 2 arguments: (errorDict, contextValue)");
+      if (!args[0]->isDict())
+          throw std::runtime_error("TIO.withContext: first argument must be a TIO error dict");
+      args[0]->asDict()->set("context", args[1]);
+      return args[0];
+  };
+  tio->set("withContext", makeFn(tioWithContext));
+
+  builtins->set("TIO", makeDict(tio));
 
   // Terminal.In.read()
   defNative("read", [this](std::vector<ValuePtr>) -> ValuePtr {
     return makeStr(readLine());
+  });
+
+  // get function
+  defNative("get", [this](std::vector<ValuePtr> args) -> ValuePtr {
+      if (args.empty()) {
+          throw TypeError("get() expects at least 1 argument");
+      }
+      ValuePtr obj = args[0];
+      
+      auto getSingleProp = [this](ValuePtr target, const std::string& prop) -> ValuePtr {
+          if (prop == "OBJ_NAME") {
+              if (target->isClassInst()) {
+                  return makeStr(target->asClassInst()->def->name);
+              } else if (target->isClassDef()) {
+                  return makeStr(std::get<std::shared_ptr<ClassDef>>(target->data)->name);
+              } else if (target->isStructInst()) {
+                  return makeStr(target->asStructInst()->def->name);
+              } else if (target->isStructDef()) {
+                  return makeStr(std::get<std::shared_ptr<StructDef>>(target->data)->name);
+              } else if (target->isFn()) {
+                  return makeStr(target->asFn()->name);
+              } else {
+                  return makeStr(target->typeName());
+              }
+          } else if (prop == "GET_ITEM") {
+              if (target->isList()) {
+                  auto lv = std::make_shared<ListValue>();
+                  lv->elements = target->asList()->elements;
+                  return makeList(lv);
+              } else if (target->isDict()) {
+                  auto lv = std::make_shared<ListValue>();
+                  for (auto& kv : target->asDict()->pairs) {
+                      auto pair = std::make_shared<ListValue>();
+                      pair->elements.push_back(kv.first);
+                      pair->elements.push_back(kv.second);
+                      lv->elements.push_back(makeList(pair));
+                  }
+                  return makeList(lv);
+              } else if (target->isStr()) {
+                  auto lv = std::make_shared<ListValue>();
+                  for (char c : target->asStr()) {
+                      lv->elements.push_back(makeStr(std::string(1, c)));
+                  }
+                  return makeList(lv);
+              } else if (target->isSet()) {
+                  auto lv = std::make_shared<ListValue>();
+                  for (auto& elem : target->asSet()->elements) {
+                      lv->elements.push_back(elem);
+                  }
+                  return makeList(lv);
+              } else if (target->isClassInst()) {
+                  auto lv = std::make_shared<ListValue>();
+                  auto inst = target->asClassInst();
+                  for (auto& kv : inst->members->vars()) {
+                      auto pair = std::make_shared<ListValue>();
+                      pair->elements.push_back(makeStr(kv.first));
+                      pair->elements.push_back(kv.second.value);
+                      lv->elements.push_back(makeList(pair));
+                  }
+                  return makeList(lv);
+              } else if (target->isStructInst()) {
+                  auto lv = std::make_shared<ListValue>();
+                  auto inst = target->asStructInst();
+                  for (auto& kv : inst->fields) {
+                      auto pair = std::make_shared<ListValue>();
+                      pair->elements.push_back(makeStr(kv.first));
+                      pair->elements.push_back(kv.second);
+                      lv->elements.push_back(makeList(pair));
+                  }
+                  return makeList(lv);
+              } else {
+                  return makeList(std::make_shared<ListValue>());
+              }
+          } else if (prop == "PROPS") {
+              auto lv = std::make_shared<ListValue>();
+              if (target->isClassInst()) {
+                  auto inst = target->asClassInst();
+                  for (auto& kv : inst->members->vars()) {
+                      lv->elements.push_back(makeStr(kv.first));
+                  }
+              } else if (target->isClassDef()) {
+                  auto def = std::get<std::shared_ptr<ClassDef>>(target->data);
+                  for (auto& kv : def->methods->vars()) {
+                      lv->elements.push_back(makeStr(kv.first));
+                  }
+              } else if (target->isStructInst()) {
+                  auto inst = target->asStructInst();
+                  for (auto& kv : inst->fields) {
+                      lv->elements.push_back(makeStr(kv.first));
+                  }
+              } else if (target->isStructDef()) {
+                  auto def = std::get<std::shared_ptr<StructDef>>(target->data);
+                  for (auto& f : def->fields) {
+                      lv->elements.push_back(makeStr(f.first));
+                  }
+              } else if (target->isDict()) {
+                  for (auto& kv : target->asDict()->pairs) {
+                      lv->elements.push_back(kv.first);
+                  }
+              } else if (target->isStr()) {
+                  for (auto& m : {"length", "len", "upper", "lower", "trim", "contains", "startsWith", "endsWith", "split", "replace", "slice", "substr", "toString", "str", "toInt", "toFloat", "repeat", "chars"}) {
+                      lv->elements.push_back(makeStr(m));
+                  }
+              } else if (target->isList()) {
+                  for (auto& m : {"length", "len", "size", "push", "add", "append", "pop", "shift", "unshift", "contains", "includes", "reverse", "join", "slice", "map", "filter", "reduce", "first", "last", "clear", "toString"}) {
+                      lv->elements.push_back(makeStr(m));
+                  }
+              }
+              return makeList(lv);
+          }
+          return makeNull();
+      };
+      
+      if (args.size() == 1) {
+          auto resDict = std::make_shared<DictValue>();
+          resDict->set("OBJ_NAME", getSingleProp(obj, "OBJ_NAME"));
+          resDict->set("GET_ITEM", getSingleProp(obj, "GET_ITEM"));
+          resDict->set("PROPS", getSingleProp(obj, "PROPS"));
+          return makeDict(resDict);
+      }
+      
+      ValuePtr spec = args[1];
+      if (spec->isList()) {
+          auto resDict = std::make_shared<DictValue>();
+          for (auto& elem : spec->asList()->elements) {
+              std::string prop = elem->toString();
+              resDict->set(prop, getSingleProp(obj, prop));
+          }
+          return makeDict(resDict);
+      } else {
+          return getSingleProp(obj, spec->toString());
+      }
   });
 
   // Conversion utils
@@ -1890,6 +2341,618 @@ void Interpreter::registerBuiltins() {
     if (args.empty())
       return makeStr("");
     return makeStr(std::string(1, (char)args[0]->asInt()));
+  });
+
+  // Matrix functions
+  auto parseMatrix = [](ValuePtr val) -> std::vector<std::vector<double>> {
+    if (!val->isList()) {
+      throw TypeError("Expected a 2D list (matrix), but got " + val->typeName());
+    }
+    auto listVal = val->asList();
+    if (listVal->elements.empty()) {
+      throw TypeError("Matrix cannot be empty");
+    }
+    std::vector<std::vector<double>> matrix;
+    size_t cols = 0;
+    bool first = true;
+    for (auto& rowVal : listVal->elements) {
+      if (!rowVal->isList()) {
+        throw TypeError("Expected each row of the matrix to be a list, but got " + rowVal->typeName());
+      }
+      auto rowList = rowVal->asList();
+      if (first) {
+        cols = rowList->elements.size();
+        if (cols == 0) {
+          throw TypeError("Matrix rows cannot be empty");
+        }
+        first = false;
+      } else if (rowList->elements.size() != cols) {
+        throw TypeError("Matrix rows must have the same number of columns");
+      }
+      std::vector<double> row;
+      for (auto& elem : rowList->elements) {
+        if (elem->isInt()) {
+          row.push_back((double)elem->asInt());
+        } else if (elem->isFloat()) {
+          row.push_back(elem->asFloat());
+        } else {
+          throw TypeError("Matrix elements must be numbers, but got " + elem->typeName());
+        }
+      }
+      matrix.push_back(row);
+    }
+    return matrix;
+  };
+
+  auto isMatrixAllInts = [](ValuePtr val) -> bool {
+    if (!val->isList()) return false;
+    for (auto& rowVal : val->asList()->elements) {
+      if (!rowVal->isList()) return false;
+      for (auto& elem : rowVal->asList()->elements) {
+        if (!elem->isInt()) return false;
+      }
+    }
+    return true;
+  };
+
+  auto makeMatrix = [](const std::vector<std::vector<double>>& matrix, bool allInts) -> ValuePtr {
+    auto outer = std::make_shared<ListValue>();
+    for (const auto& row : matrix) {
+      auto inner = std::make_shared<ListValue>();
+      for (double val : row) {
+        if (allInts) {
+          inner->elements.push_back(makeInt((int64_t)val));
+        } else {
+          inner->elements.push_back(makeFloat(val));
+        }
+      }
+      outer->elements.push_back(makeList(inner));
+    }
+    return makeList(outer);
+  };
+
+  defNative("matrix_add", [parseMatrix, isMatrixAllInts, makeMatrix](std::vector<ValuePtr> args) -> ValuePtr {
+    if (args.size() != 2) {
+      throw TypeError("matrix_add expects exactly 2 arguments");
+    }
+    auto m1 = parseMatrix(args[0]);
+    auto m2 = parseMatrix(args[1]);
+    if (m1.size() != m2.size() || m1[0].size() != m2[0].size()) {
+      throw MathError("Matrix dimensions do not match for addition: (" + 
+                      std::to_string(m1.size()) + "x" + std::to_string(m1[0].size()) + ") and (" +
+                      std::to_string(m2.size()) + "x" + std::to_string(m2[0].size()) + ")");
+    }
+    size_t rows = m1.size();
+    size_t cols = m1[0].size();
+    std::vector<std::vector<double>> res(rows, std::vector<double>(cols));
+    for (size_t i = 0; i < rows; ++i) {
+      for (size_t j = 0; j < cols; ++j) {
+        res[i][j] = m1[i][j] + m2[i][j];
+      }
+    }
+    bool allInts = isMatrixAllInts(args[0]) && isMatrixAllInts(args[1]);
+    return makeMatrix(res, allInts);
+  });
+
+  defNative("matrix_mul", [parseMatrix, isMatrixAllInts, makeMatrix](std::vector<ValuePtr> args) -> ValuePtr {
+    if (args.size() != 2) {
+      throw TypeError("matrix_mul expects exactly 2 arguments");
+    }
+    bool firstIsScalar = args[0]->isInt() || args[0]->isFloat();
+    bool secondIsScalar = args[1]->isInt() || args[1]->isFloat();
+    if (firstIsScalar && secondIsScalar) {
+      throw TypeError("matrix_mul expects at least one matrix argument");
+    }
+    if (firstIsScalar) {
+      double scalar = args[0]->isInt() ? (double)args[0]->asInt() : args[0]->asFloat();
+      auto m = parseMatrix(args[1]);
+      for (size_t i = 0; i < m.size(); ++i) {
+        for (size_t j = 0; j < m[0].size(); ++j) {
+          m[i][j] *= scalar;
+        }
+      }
+      bool allInts = args[0]->isInt() && isMatrixAllInts(args[1]);
+      return makeMatrix(m, allInts);
+    }
+    if (secondIsScalar) {
+      double scalar = args[1]->isInt() ? (double)args[1]->asInt() : args[1]->asFloat();
+      auto m = parseMatrix(args[0]);
+      for (size_t i = 0; i < m.size(); ++i) {
+        for (size_t j = 0; j < m[0].size(); ++j) {
+          m[i][j] *= scalar;
+        }
+      }
+      bool allInts = isMatrixAllInts(args[0]) && args[1]->isInt();
+      return makeMatrix(m, allInts);
+    }
+    auto m1 = parseMatrix(args[0]);
+    auto m2 = parseMatrix(args[1]);
+    if (m1[0].size() != m2.size()) {
+      throw MathError("Matrix dimensions do not match for multiplication: columns of first (" +
+                      std::to_string(m1[0].size()) + ") must match rows of second (" +
+                      std::to_string(m2.size()) + ")");
+    }
+    size_t rows = m1.size();
+    size_t cols = m2[0].size();
+    size_t innerDim = m1[0].size();
+    std::vector<std::vector<double>> res(rows, std::vector<double>(cols, 0.0));
+    for (size_t i = 0; i < rows; ++i) {
+      for (size_t j = 0; j < cols; ++j) {
+        for (size_t k = 0; k < innerDim; ++k) {
+          res[i][j] += m1[i][k] * m2[k][j];
+        }
+      }
+    }
+    bool allInts = isMatrixAllInts(args[0]) && isMatrixAllInts(args[1]);
+    return makeMatrix(res, allInts);
+  });
+
+  // --- String Native Builtins ---
+  defNative("str_trim", [this](std::vector<ValuePtr> args) -> ValuePtr {
+    if (args.empty()) return makeStr("");
+    return callBuiltinMethod(args[0], "trim", {}, -1);
+  });
+  defNative("str_trimleft", [](std::vector<ValuePtr> args) -> ValuePtr {
+    if (args.empty()) return makeStr("");
+    std::string s = args[0]->toString();
+    size_t l = s.find_first_not_of(" \t\r\n");
+    return (l == std::string::npos) ? makeStr("") : makeStr(s.substr(l));
+  });
+  defNative("str_trimright", [](std::vector<ValuePtr> args) -> ValuePtr {
+    if (args.empty()) return makeStr("");
+    std::string s = args[0]->toString();
+    size_t r = s.find_last_not_of(" \t\r\n");
+    return (r == std::string::npos) ? makeStr("") : makeStr(s.substr(0, r + 1));
+  });
+  defNative("str_upper", [this](std::vector<ValuePtr> args) -> ValuePtr {
+    if (args.empty()) return makeStr("");
+    return callBuiltinMethod(args[0], "upper", {}, -1);
+  });
+  defNative("str_lower", [this](std::vector<ValuePtr> args) -> ValuePtr {
+    if (args.empty()) return makeStr("");
+    return callBuiltinMethod(args[0], "lower", {}, -1);
+  });
+  defNative("str_startswith", [this](std::vector<ValuePtr> args) -> ValuePtr {
+    if (args.size() < 2) return makeBool(false);
+    return callBuiltinMethod(args[0], "startsWith", {args[1]}, -1);
+  });
+  defNative("str_endswith", [this](std::vector<ValuePtr> args) -> ValuePtr {
+    if (args.size() < 2) return makeBool(false);
+    return callBuiltinMethod(args[0], "endsWith", {args[1]}, -1);
+  });
+  defNative("str_contains", [this](std::vector<ValuePtr> args) -> ValuePtr {
+    if (args.size() < 2) return makeBool(false);
+    return callBuiltinMethod(args[0], "contains", {args[1]}, -1);
+  });
+  defNative("str_replace", [this](std::vector<ValuePtr> args) -> ValuePtr {
+    if (args.size() < 3) return args.empty() ? makeStr("") : args[0];
+    return callBuiltinMethod(args[0], "replace", {args[1], args[2]}, -1);
+  });
+  defNative("str_split", [this](std::vector<ValuePtr> args) -> ValuePtr {
+    if (args.empty()) return makeList(std::make_shared<ListValue>());
+    ValuePtr delim = (args.size() > 1) ? args[1] : makeStr(" ");
+    return callBuiltinMethod(args[0], "split", {delim}, -1);
+  });
+  defNative("str_join", [this](std::vector<ValuePtr> args) -> ValuePtr {
+    if (args.size() < 2) return makeStr("");
+    return callBuiltinMethod(args[0], "join", {args[1]}, -1);
+  });
+  defNative("str_repeat", [this](std::vector<ValuePtr> args) -> ValuePtr {
+    if (args.size() < 2) return args.empty() ? makeStr("") : args[0];
+    return callBuiltinMethod(args[0], "repeat", {args[1]}, -1);
+  });
+  defNative("str_indexof", [](std::vector<ValuePtr> args) -> ValuePtr {
+    if (args.size() < 2) return makeInt(-1);
+    std::string s = args[0]->toString();
+    std::string sub = args[1]->toString();
+    size_t pos = s.find(sub);
+    return makeInt(pos == std::string::npos ? -1 : (int64_t)pos);
+  });
+  defNative("str_slice", [this](std::vector<ValuePtr> args) -> ValuePtr {
+    if (args.empty()) return makeStr("");
+    std::vector<ValuePtr> subArgs;
+    if (args.size() > 1) subArgs.push_back(args[1]);
+    if (args.size() > 2) subArgs.push_back(args[2]);
+    return callBuiltinMethod(args[0], "slice", subArgs, -1);
+  });
+  defNative("str_padleft", [](std::vector<ValuePtr> args) -> ValuePtr {
+    if (args.size() < 2) return args.empty() ? makeStr("") : args[0];
+    std::string s = args[0]->toString();
+    size_t width = (size_t)args[1]->asInt();
+    char padChar = (args.size() > 2 && !args[2]->toString().empty()) ? args[2]->toString()[0] : ' ';
+    if (s.size() >= width) return makeStr(s);
+    return makeStr(std::string(width - s.size(), padChar) + s);
+  });
+  defNative("str_padright", [](std::vector<ValuePtr> args) -> ValuePtr {
+    if (args.size() < 2) return args.empty() ? makeStr("") : args[0];
+    std::string s = args[0]->toString();
+    size_t width = (size_t)args[1]->asInt();
+    char padChar = (args.size() > 2 && !args[2]->toString().empty()) ? args[2]->toString()[0] : ' ';
+    if (s.size() >= width) return makeStr(s);
+    return makeStr(s + std::string(width - s.size(), padChar));
+  });
+  defNative("str_reverse", [](std::vector<ValuePtr> args) -> ValuePtr {
+    if (args.empty()) return makeStr("");
+    std::string s = args[0]->toString();
+    std::reverse(s.begin(), s.end());
+    return makeStr(s);
+  });
+  defNative("str_isdigit", [](std::vector<ValuePtr> args) -> ValuePtr {
+    if (args.empty()) return makeBool(false);
+    std::string s = args[0]->toString();
+    if (s.empty()) return makeBool(false);
+    for (char c : s) if (!std::isdigit(c)) return makeBool(false);
+    return makeBool(true);
+  });
+  defNative("str_isalpha", [](std::vector<ValuePtr> args) -> ValuePtr {
+    if (args.empty()) return makeBool(false);
+    std::string s = args[0]->toString();
+    if (s.empty()) return makeBool(false);
+    for (char c : s) if (!std::isalpha(c)) return makeBool(false);
+    return makeBool(true);
+  });
+  defNative("str_isalphanum", [](std::vector<ValuePtr> args) -> ValuePtr {
+    if (args.empty()) return makeBool(false);
+    std::string s = args[0]->toString();
+    if (s.empty()) return makeBool(false);
+    for (char c : s) if (!std::isalnum(c)) return makeBool(false);
+    return makeBool(true);
+  });
+
+  // --- IO Native Builtins ---
+  defNative("io_readfile", [](std::vector<ValuePtr> args) -> ValuePtr {
+    if (args.empty()) throw IOError("readfile requires file path");
+    std::string path = args[0]->toString();
+    std::ifstream f(path);
+    if (!f) throw IOError("Cannot open file: " + path);
+    std::ostringstream ss;
+    ss << f.rdbuf();
+    return makeStr(ss.str());
+  });
+  defNative("io_writefile", [](std::vector<ValuePtr> args) -> ValuePtr {
+    if (args.size() < 2) throw IOError("writefile requires path and content");
+    std::string path = args[0]->toString();
+    std::ofstream f(path);
+    if (!f) throw IOError("Cannot write to file: " + path);
+    f << args[1]->toString();
+    return makeNull();
+  });
+  defNative("io_appendfile", [](std::vector<ValuePtr> args) -> ValuePtr {
+    if (args.size() < 2) throw IOError("appendfile requires path and content");
+    std::string path = args[0]->toString();
+    std::ofstream f(path, std::ios_base::app);
+    if (!f) throw IOError("Cannot append to file: " + path);
+    f << args[1]->toString();
+    return makeNull();
+  });
+  defNative("io_fileexists", [](std::vector<ValuePtr> args) -> ValuePtr {
+    if (args.empty()) return makeBool(false);
+    return makeBool(std::filesystem::exists(args[0]->toString()));
+  });
+  defNative("io_deletefile", [](std::vector<ValuePtr> args) -> ValuePtr {
+    if (args.empty()) throw IOError("deletefile requires file path");
+    std::filesystem::remove(args[0]->toString());
+    return makeNull();
+  });
+  defNative("io_readlines", [](std::vector<ValuePtr> args) -> ValuePtr {
+    if (args.empty()) throw IOError("readlines requires file path");
+    std::string path = args[0]->toString();
+    std::ifstream f(path);
+    if (!f) throw IOError("Cannot open file: " + path);
+    auto lv = std::make_shared<ListValue>();
+    std::string line;
+    while (std::getline(f, line)) {
+      lv->elements.push_back(makeStr(line));
+    }
+    return makeList(lv);
+  });
+  defNative("io_writelines", [](std::vector<ValuePtr> args) -> ValuePtr {
+    if (args.size() < 2) throw IOError("writelines requires path and list");
+    std::string path = args[0]->toString();
+    std::ofstream f(path);
+    if (!f) throw IOError("Cannot write to file: " + path);
+    if (args[1]->isList()) {
+      for (auto& elem : args[1]->asList()->elements) {
+        f << elem->toString() << "\n";
+      }
+    }
+    return makeNull();
+  });
+  defNative("io_cwd", [](std::vector<ValuePtr>) -> ValuePtr {
+    return makeStr(std::filesystem::current_path().string());
+  });
+  defNative("io_listdir", [](std::vector<ValuePtr> args) -> ValuePtr {
+    std::string path = args.empty() ? "." : args[0]->toString();
+    auto lv = std::make_shared<ListValue>();
+    if (std::filesystem::exists(path) && std::filesystem::is_directory(path)) {
+      for (const auto& entry : std::filesystem::directory_iterator(path)) {
+        lv->elements.push_back(makeStr(entry.path().filename().string()));
+      }
+    }
+    return makeList(lv);
+  });
+  defNative("io_isdir", [](std::vector<ValuePtr> args) -> ValuePtr {
+    if (args.empty()) return makeBool(false);
+    return makeBool(std::filesystem::is_directory(args[0]->toString()));
+  });
+  defNative("io_isfile", [](std::vector<ValuePtr> args) -> ValuePtr {
+    if (args.empty()) return makeBool(false);
+    return makeBool(std::filesystem::is_regular_file(args[0]->toString()));
+  });
+  defNative("io_mkdir", [](std::vector<ValuePtr> args) -> ValuePtr {
+    if (args.empty()) throw IOError("mkdir requires path");
+    std::filesystem::create_directories(args[0]->toString());
+    return makeNull();
+  });
+
+  // --- Collections Native Builtins ---
+  defNative("col_map", [this](std::vector<ValuePtr> args) -> ValuePtr {
+    if (args.size() < 2) return args.empty() ? makeList(std::make_shared<ListValue>()) : args[0];
+    return callBuiltinMethod(args[0], "map", {args[1]}, -1);
+  });
+  defNative("col_filter", [this](std::vector<ValuePtr> args) -> ValuePtr {
+    if (args.size() < 2) return args.empty() ? makeList(std::make_shared<ListValue>()) : args[0];
+    return callBuiltinMethod(args[0], "filter", {args[1]}, -1);
+  });
+  defNative("col_reduce", [this](std::vector<ValuePtr> args) -> ValuePtr {
+    if (args.size() < 2) return makeNull();
+    std::vector<ValuePtr> subArgs = {args[1]};
+    if (args.size() > 2) subArgs.push_back(args[2]);
+    return callBuiltinMethod(args[0], "reduce", subArgs, -1);
+  });
+  defNative("col_any", [this](std::vector<ValuePtr> args) -> ValuePtr {
+    if (args.size() < 2) return makeBool(false);
+    if (!args[0]->isList() || !args[1]->isFn()) return makeBool(false);
+    for (auto& elem : args[0]->asList()->elements) {
+      if (callFunction(args[1]->asFn(), {elem}, -1)->truthy()) return makeBool(true);
+    }
+    return makeBool(false);
+  });
+  defNative("col_all", [this](std::vector<ValuePtr> args) -> ValuePtr {
+    if (args.size() < 2) return makeBool(false);
+    if (!args[0]->isList() || !args[1]->isFn()) return makeBool(false);
+    for (auto& elem : args[0]->asList()->elements) {
+      if (!callFunction(args[1]->asFn(), {elem}, -1)->truthy()) return makeBool(false);
+    }
+    return makeBool(true);
+  });
+  defNative("col_find", [this](std::vector<ValuePtr> args) -> ValuePtr {
+    if (args.size() < 2) return makeNull();
+    if (!args[0]->isList() || !args[1]->isFn()) return makeNull();
+    for (auto& elem : args[0]->asList()->elements) {
+      if (callFunction(args[1]->asFn(), {elem}, -1)->truthy()) return elem;
+    }
+    return makeNull();
+  });
+  defNative("col_findindex", [this](std::vector<ValuePtr> args) -> ValuePtr {
+    if (args.size() < 2) return makeInt(-1);
+    if (!args[0]->isList() || !args[1]->isFn()) return makeInt(-1);
+    int64_t idx = 0;
+    for (auto& elem : args[0]->asList()->elements) {
+      if (callFunction(args[1]->asFn(), {elem}, -1)->truthy()) return makeInt(idx);
+      idx++;
+    }
+    return makeInt(-1);
+  });
+  defNative("col_flatten", [](std::vector<ValuePtr> args) -> ValuePtr {
+    if (args.empty()) return makeList(std::make_shared<ListValue>());
+    auto res = std::make_shared<ListValue>();
+    std::function<void(ValuePtr)> flattenHelper = [&](ValuePtr val) {
+      if (val->isList()) {
+        for (auto& elem : val->asList()->elements) flattenHelper(elem);
+      } else {
+        res->elements.push_back(val);
+      }
+    };
+    flattenHelper(args[0]);
+    return makeList(res);
+  });
+  defNative("col_unique", [](std::vector<ValuePtr> args) -> ValuePtr {
+    if (args.empty() || !args[0]->isList()) return makeList(std::make_shared<ListValue>());
+    auto res = std::make_shared<ListValue>();
+    for (auto& elem : args[0]->asList()->elements) {
+      bool found = false;
+      for (auto& ex : res->elements) {
+        if (elem->equals(*ex)) { found = true; break; }
+      }
+      if (!found) res->elements.push_back(elem);
+    }
+    return makeList(res);
+  });
+  defNative("col_sort", [this](std::vector<ValuePtr> args) -> ValuePtr {
+    if (args.empty() || !args[0]->isList()) return makeList(std::make_shared<ListValue>());
+    auto res = std::make_shared<ListValue>();
+    res->elements = args[0]->asList()->elements;
+    if (args.size() > 1 && args[1]->isFn()) {
+      auto fn = args[1]->asFn();
+      std::stable_sort(res->elements.begin(), res->elements.end(), [&](const ValuePtr& a, const ValuePtr& b) {
+        return callFunction(fn, {a, b}, -1)->truthy();
+      });
+    } else {
+      std::stable_sort(res->elements.begin(), res->elements.end(), [](const ValuePtr& a, const ValuePtr& b) {
+        if (a->isInt() && b->isInt()) return a->asInt() < b->asInt();
+        if ((a->isFloat() || a->isInt()) && (b->isFloat() || b->isInt())) return a->asFloat() < b->asFloat();
+        return a->toString() < b->toString();
+      });
+    }
+    return makeList(res);
+  });
+  defNative("col_sortby", [this](std::vector<ValuePtr> args) -> ValuePtr {
+    if (args.size() < 2 || !args[0]->isList() || !args[1]->isFn()) return args.empty() ? makeList(std::make_shared<ListValue>()) : args[0];
+    auto res = std::make_shared<ListValue>();
+    res->elements = args[0]->asList()->elements;
+    auto fn = args[1]->asFn();
+    std::stable_sort(res->elements.begin(), res->elements.end(), [&](const ValuePtr& a, const ValuePtr& b) {
+      auto ka = callFunction(fn, {a}, -1);
+      auto kb = callFunction(fn, {b}, -1);
+      if (ka->isInt() && kb->isInt()) return ka->asInt() < kb->asInt();
+      if ((ka->isFloat() || ka->isInt()) && (kb->isFloat() || kb->isInt())) return ka->asFloat() < kb->asFloat();
+      return ka->toString() < kb->toString();
+    });
+    return makeList(res);
+  });
+  defNative("col_groupby", [this](std::vector<ValuePtr> args) -> ValuePtr {
+    if (args.size() < 2 || !args[0]->isList() || !args[1]->isFn()) return makeDict(std::make_shared<DictValue>());
+    auto res = std::make_shared<DictValue>();
+    auto fn = args[1]->asFn();
+    for (auto& elem : args[0]->asList()->elements) {
+      std::string key = callFunction(fn, {elem}, -1)->toString();
+      auto bucket = res->get(key);
+      if (!bucket) {
+        auto nl = std::make_shared<ListValue>();
+        bucket = makeList(nl);
+        res->set(key, bucket);
+      }
+      bucket->asList()->elements.push_back(elem);
+    }
+    return makeDict(res);
+  });
+  defNative("col_zip", [](std::vector<ValuePtr> args) -> ValuePtr {
+    if (args.size() < 2 || !args[0]->isList() || !args[1]->isList()) return makeList(std::make_shared<ListValue>());
+    auto l1 = args[0]->asList();
+    auto l2 = args[1]->asList();
+    size_t sz = std::min(l1->elements.size(), l2->elements.size());
+    auto res = std::make_shared<ListValue>();
+    for (size_t i = 0; i < sz; i++) {
+      auto pair = std::make_shared<ListValue>();
+      pair->elements.push_back(l1->elements[i]);
+      pair->elements.push_back(l2->elements[i]);
+      res->elements.push_back(makeList(pair));
+    }
+    return makeList(res);
+  });
+  defNative("col_take", [](std::vector<ValuePtr> args) -> ValuePtr {
+    if (args.size() < 2 || !args[0]->isList()) return makeList(std::make_shared<ListValue>());
+    auto l = args[0]->asList();
+    size_t n = (size_t)std::max((int64_t)0, args[1]->asInt());
+    auto res = std::make_shared<ListValue>();
+    for (size_t i = 0; i < n && i < l->elements.size(); i++) res->elements.push_back(l->elements[i]);
+    return makeList(res);
+  });
+  defNative("col_drop", [](std::vector<ValuePtr> args) -> ValuePtr {
+    if (args.size() < 2 || !args[0]->isList()) return makeList(std::make_shared<ListValue>());
+    auto l = args[0]->asList();
+    size_t n = (size_t)std::max((int64_t)0, args[1]->asInt());
+    auto res = std::make_shared<ListValue>();
+    for (size_t i = n; i < l->elements.size(); i++) res->elements.push_back(l->elements[i]);
+    return makeList(res);
+  });
+  defNative("col_count", [this](std::vector<ValuePtr> args) -> ValuePtr {
+    if (args.empty() || !args[0]->isList()) return makeInt(0);
+    auto l = args[0]->asList();
+    if (args.size() > 1 && args[1]->isFn()) {
+      auto fn = args[1]->asFn();
+      int64_t c = 0;
+      for (auto& elem : l->elements) {
+        if (callFunction(fn, {elem}, -1)->truthy()) c++;
+      }
+      return makeInt(c);
+    }
+    return makeInt(l->elements.size());
+  });
+  defNative("col_sum", [](std::vector<ValuePtr> args) -> ValuePtr {
+    if (args.empty() || !args[0]->isList()) return makeInt(0);
+    double s = 0;
+    bool isFloat = false;
+    for (auto& elem : args[0]->asList()->elements) {
+      if (elem->isFloat()) { s += elem->asFloat(); isFloat = true; }
+      else if (elem->isInt()) { s += elem->asInt(); }
+    }
+    return isFloat ? makeFloat(s) : makeInt((int64_t)s);
+  });
+  defNative("col_min", [](std::vector<ValuePtr> args) -> ValuePtr {
+    if (args.empty() || !args[0]->isList() || args[0]->asList()->elements.empty()) return makeNull();
+    auto l = args[0]->asList();
+    ValuePtr m = l->elements[0];
+    for (auto& elem : l->elements) {
+      if (elem->isFloat() || elem->isInt()) {
+        if (elem->asFloat() < m->asFloat()) m = elem;
+      } else if (elem->toString() < m->toString()) {
+        m = elem;
+      }
+    }
+    return m;
+  });
+  defNative("col_max", [](std::vector<ValuePtr> args) -> ValuePtr {
+    if (args.empty() || !args[0]->isList() || args[0]->asList()->elements.empty()) return makeNull();
+    auto l = args[0]->asList();
+    ValuePtr m = l->elements[0];
+    for (auto& elem : l->elements) {
+      if (elem->isFloat() || elem->isInt()) {
+        if (elem->asFloat() > m->asFloat()) m = elem;
+      } else if (elem->toString() > m->toString()) {
+        m = elem;
+      }
+    }
+    return m;
+  });
+  defNative("col_keys", [this](std::vector<ValuePtr> args) -> ValuePtr {
+    if (args.empty()) return makeList(std::make_shared<ListValue>());
+    return callBuiltinMethod(args[0], "keys", {}, -1);
+  });
+  defNative("col_values", [this](std::vector<ValuePtr> args) -> ValuePtr {
+    if (args.empty()) return makeList(std::make_shared<ListValue>());
+    return callBuiltinMethod(args[0], "values", {}, -1);
+  });
+  defNative("col_entries", [](std::vector<ValuePtr> args) -> ValuePtr {
+    if (args.empty() || !args[0]->isDict()) return makeList(std::make_shared<ListValue>());
+    auto res = std::make_shared<ListValue>();
+    for (auto& kv : args[0]->asDict()->pairs) {
+      auto pair = std::make_shared<ListValue>();
+      pair->elements.push_back(kv.first);
+      pair->elements.push_back(kv.second);
+      res->elements.push_back(makeList(pair));
+    }
+    return makeList(res);
+  });
+  defNative("col_merge", [](std::vector<ValuePtr> args) -> ValuePtr {
+    if (args.size() < 2 || !args[0]->isDict() || !args[1]->isDict()) return args.empty() ? makeDict(std::make_shared<DictValue>()) : args[0];
+    auto res = std::make_shared<DictValue>();
+    res->pairs = args[0]->asDict()->pairs;
+    for (auto& kv : args[1]->asDict()->pairs) {
+      res->set(kv.first->toString(), kv.second);
+    }
+    return makeDict(res);
+  });
+  defNative("col_haskey", [this](std::vector<ValuePtr> args) -> ValuePtr {
+    if (args.size() < 2) return makeBool(false);
+    return callBuiltinMethod(args[0], "has", {args[1]}, -1);
+  });
+
+  // Native FFI simulation
+  defNative("sys_wifi_connect", [](std::vector<ValuePtr> args) -> ValuePtr {
+    if (args.size() < 2) return makeBool(false);
+    std::string ssid = args[0]->toString();
+    std::string pass = args[1]->toString();
+    // Simulate connection logic via native C++
+    bool success = (ssid != "Unknown" && pass.length() > 3);
+    return makeBool(success);
+  });
+  
+  defNative("sys_memory_alloc", [](std::vector<ValuePtr> args) -> ValuePtr {
+    return makeStr("0xDEADBEEF");
+  });
+  defNative("sys_memory_free", [](std::vector<ValuePtr> args) -> ValuePtr {
+    return makeBool(true);
+  });
+  defNative("sys_memory_read", [](std::vector<ValuePtr> args) -> ValuePtr {
+    return makeInt(42);
+  });
+  defNative("sys_memory_write", [](std::vector<ValuePtr> args) -> ValuePtr {
+    return makeBool(true);
+  });
+  defNative("iot_gpio_mode", [](std::vector<ValuePtr> args) -> ValuePtr {
+    return makeBool(true);
+  });
+  defNative("iot_gpio_write", [](std::vector<ValuePtr> args) -> ValuePtr {
+    return makeBool(true);
+  });
+  defNative("iot_gpio_read", [](std::vector<ValuePtr> args) -> ValuePtr {
+    return makeInt(1);
+  });
+  defNative("sys_process_exec", [](std::vector<ValuePtr> args) -> ValuePtr {
+    if (args.empty()) return makeStr("");
+    return makeStr("Executed: " + args[0]->toString());
   });
 
   globalEnv_->define("__builtins__", makeDict(builtins), false);

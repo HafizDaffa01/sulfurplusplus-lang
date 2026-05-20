@@ -60,6 +60,7 @@ struct DictValue {
 
     ValuePtr get(const std::string& key) const;
     void set(const std::string& key, ValuePtr val);
+    bool has(const std::string& key) const;
 };
 
 // Pointer value (for unsafe blocks)

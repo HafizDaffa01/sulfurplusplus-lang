@@ -1,0 +1,15 @@
+// std/TIO.sfpp
+export this as std/TIO;
+
+let TIO = __builtins__.TIO;
+
+// Core severity types
+let E            = TIO.E;           // error
+let FE           = TIO.FE;          // fatal error
+let W            = TIO.W;           // warning
+
+// Builder helpers
+let withCategory = TIO.withCategory; // (errorDict, category) -> errorDict
+let withCode     = TIO.withCode;     // (errorDict, code)     -> errorDict
+let withHint     = TIO.withHint;     // (errorDict, hint)     -> errorDict
+let withContext  = TIO.withContext;  // (errorDict, context)  -> errorDict

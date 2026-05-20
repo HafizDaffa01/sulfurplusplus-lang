@@ -1,0 +1,17 @@
+// std/io.sfpp
+export this as std/io;
+
+// File I/O — all backed by native builtins
+
+let readFile    = __builtins__.io_readfile;     // readFile(path) -> str
+let writeFile   = __builtins__.io_writefile;    // writeFile(path, content) -> null
+let appendFile  = __builtins__.io_appendfile;   // appendFile(path, content) -> null
+let fileExists  = __builtins__.io_fileexists;   // fileExists(path) -> bool
+let deleteFile  = __builtins__.io_deletefile;   // deleteFile(path) -> null
+let readLines   = __builtins__.io_readlines;    // readLines(path) -> list<str>
+let writeLines  = __builtins__.io_writelines;   // writeLines(path, lines: list) -> null
+let cwd         = __builtins__.io_cwd;          // cwd() -> str
+let listDir     = __builtins__.io_listdir;      // listDir(path) -> list<str>
+let isDir       = __builtins__.io_isdir;        // isDir(path) -> bool
+let isFile      = __builtins__.io_isfile;       // isFile(path) -> bool
+let mkdir       = __builtins__.io_mkdir;        // mkdir(path) -> null

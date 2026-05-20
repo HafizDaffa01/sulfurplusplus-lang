@@ -1,0 +1,57 @@
+import std/sys as sys;
+
+let Terminal = __builtins__.Terminal;
+
+Terminal.Out << "=== Testing Sulfur++ Low-Level Library (std/sys) ===" << Terminal.EOL << Terminal.EOL;
+
+// ----------------------------------------
+// 1. Memory Management Test
+// ----------------------------------------
+Terminal.Out << "--- Testing Raw Memory Allocation ---" << Terminal.EOL;
+let Pointer = sys.Pointer;
+let memPtr = new Pointer("0x00000000"); // Will be overwritten by allocation mock
+memPtr.address = sys.nativeMalloc(1024);
+Terminal.Out << "Allocated memory at address: " << memPtr.address << Terminal.EOL;
+Terminal.Out << "Writing value '255' to memory..." << Terminal.EOL;
+memPtr.write(255);
+let memVal = memPtr.read();
+Terminal.Out << "Read value from memory: " << memVal << Terminal.EOL;
+memPtr.free();
+Terminal.Out << "Memory freed successfully." << Terminal.EOL << Terminal.EOL;
+
+
+// ----------------------------------------
+// 2. Hardware I/O (IoT) Test
+// ----------------------------------------
+Terminal.Out << "--- Testing GPIO Hardware Pins ---" << Terminal.EOL;
+let GPIO = sys.GPIO;
+let ledPin = new GPIO(13);
+ledPin.setMode(1); // OUTPUT
+Terminal.Out << "Set Pin 13 to OUTPUT mode." << Terminal.EOL;
+ledPin.write(1); // HIGH
+Terminal.Out << "Wrote HIGH (1) to Pin 13." << Terminal.EOL;
+let pinState = ledPin.read();
+Terminal.Out << "Current state of Pin 13: " << pinState << Terminal.EOL << Terminal.EOL;
+
+
+// ----------------------------------------
+// 3. Desktop Process Execution Test
+// ----------------------------------------
+Terminal.Out << "--- Testing OS Shell Execution ---" << Terminal.EOL;
+let out = sys.exec("echo Hello from Desktop!");
+Terminal.Out << "Process Output: " << out << Terminal.EOL << Terminal.EOL;
+
+
+// ----------------------------------------
+// 4. Overwrite (Mocking) Test
+// ----------------------------------------
+Terminal.Out << "--- Testing Overwrite (Mocking Native Function) ---" << Terminal.EOL;
+sys.applyWifiMock();
+
+let WiFiManager = sys.WiFiManager;
+let wifi = new WiFiManager();
+Terminal.Out << "Attempting to connect to 'Unknown' network (should succeed due to mock)..." << Terminal.EOL;
+let success3 = wifi.connect("Unknown", "bad");
+Terminal.Out << "Mock Connection success: " << success3 << Terminal.EOL;
+
+Terminal.Out << "=== Low-Level API Features Tested Successfully! ===" << Terminal.EOL;

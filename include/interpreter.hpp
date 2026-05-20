@@ -51,8 +51,11 @@ private:
 
     void execImport(const ImportStmt& s);
     void execExport(const ExportStmt& s);
+    void execExpose(const ExposeStmt& s);
+    void execOverwrite(const OverwriteStmt& s);
     void execUnsafe(const UnsafeStmt& s);
     void execDefer(const DeferStmt& s);
+    void execTryCatch(const TryCatchStmt& s);
 
     // Evaluate expression
     ValuePtr evalExpr(const Expr& e);
@@ -109,4 +112,7 @@ private:
 
     // Debug trace
     void trace(const std::string& msg);
+
+    // Kept-alive ASTs for imported modules
+    std::vector<std::vector<StmtPtr>> moduleASTs_;
 };
