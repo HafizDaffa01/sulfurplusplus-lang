@@ -1,0 +1,52 @@
+// std/hal.sfpp
+// Sulfur++ Hardware Abstraction Layer
+// Provides an easy interface for GPIO, PWM, and other embedded hardware.
+
+export this as std/hal;
+
+// Import native sys functions if needed (assuming they are already registered in the interpreter)
+// We use 'unsafe' to access low-level native functions safely through this module.
+
+// Constants for GPIO modes
+let OUTPUT = 1;
+let INPUT = 0;
+
+// Constants for Digital levels
+let HIGH = 1;
+let LOW = 0;
+
+// Helper class for GPIO
+class Pin {
+    pinNumber;
+
+    +1>init;
+    fn init(pin) {
+        this.pinNumber = pin;
+    }
+
+    fn mode(m) {
+        unsafe {
+            iot_gpio_mode(this.pinNumber, m);
+        }
+        return this; // Enable chaining
+    }
+
+    fn write(val) {
+        unsafe {
+            iot_gpio_write(this.pinNumber, val);
+        }
+    }
+
+    fn read() {
+        var val = 0;
+        unsafe {
+            val = iot_gpio_read(this.pinNumber);
+        }
+        return val;
+    }
+}
+
+// Function to easily create a new pin instance
+fn createPin(pin) {
+    return new Pin(pin);
+}

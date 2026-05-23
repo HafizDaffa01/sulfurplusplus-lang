@@ -885,7 +885,7 @@ ValuePtr Interpreter::evalBinary(const BinaryExpr &e) {
           }
           auto target = obj.asPtr()->target;
           if (!target || (*target).isNull()) {
-            throw RuntimeError("Null pointer dereference", e.line, "E_RUNTIME_403");
+            throw RuntimeError("Null pointer dereference", e.line, "E_RUNTIME_403", "Ensure the pointer was initialized using a valid reference.");
           }
           obj = *target;
         } else if (mem->op == "." || mem->op == "?.") {

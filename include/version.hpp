@@ -1,9 +1,9 @@
 #pragma once
 
-#define __SULFUR_VERSION__ "1.0.0-A"
-#define __RUNTIME_VERSION__ "1.3.0-A"
-#define __FUSE_VERSION__ "1.2.0-A"
-#define __COMBUST_VERSION__ "1.2.0-A"
+#define __SULFUR_VERSION__ "1.0.1-A"
+#define __RUNTIME_VERSION__ "1.3.1-A"
+#define __FUSE_VERSION__ "1.2.1-A"
+#define __COMBUST_VERSION__ "1.2.1-A"
 
 /*
     Version format:
