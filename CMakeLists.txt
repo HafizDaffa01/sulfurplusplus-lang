@@ -17,23 +17,28 @@ endif()
 
 # Explicitly list source files for combust to avoid including fuse.cpp
 set(COMBUST_SOURCES
-    src/combust.cpp
-    src/lexer.cpp
-    src/parser.cpp
-    src/interpreter.cpp
-    src/environment.cpp
-    src/value.cpp
+    src/tools/combust.cpp
+    src/core/lexer.cpp
+    src/core/parser.cpp
+    src/core/interpreter.cpp
+    src/core/environment.cpp
+    src/core/value.cpp
 )
 
 # Define the combust executable target
 add_executable(combust ${COMBUST_SOURCES})
 
 # Define the fuse package manager executable target
-add_executable(fuse src/fuse.cpp)
+add_executable(fuse src/tools/fuse.cpp)
+
+# Define the ignitor tool executable target
+add_executable(ignitor src/tools/ignitor.cpp)
 
 
 # Specify include directories for compilation
 target_include_directories(combust PRIVATE include)
+target_include_directories(fuse PRIVATE include)
+target_include_directories(ignitor PRIVATE include)
 
 # Convenience target to run the REPL directly
 add_custom_target(run
