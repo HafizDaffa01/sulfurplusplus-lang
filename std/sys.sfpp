@@ -4,6 +4,9 @@
 
 export this as std/sys;
 
+expose "Terminal" as Terminal;
+expose "TIO" as TIO;
+
 // ==========================================
 // 1. Core Memory Management (General Purpose)
 // ==========================================
@@ -81,9 +84,8 @@ class WiFiManager {
             this.connected = true;
             return true;
         } else {
-            let TIO = __builtins__.TIO;
-            return TIO.withHint(
-                TIO.withCode(TIO.withCategory(TIO.E("Failed to connect to WiFi"), "SYS_NETWORK"), "WIFI_ERR_001"),
+            return io_withHint(
+                io_withCode(io_withCategory(io_e("Failed to connect to WiFi"), "SYS_NETWORK"), "WIFI_ERR_001"),
                 "Ensure the SSID and password are correct, and the adapter is enabled."
             );
         }

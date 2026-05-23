@@ -20,6 +20,9 @@ public:
 private:
     std::shared_ptr<Environment> globalEnv_;
     std::shared_ptr<Environment> currentEnv_;
+
+    // Private registry for native builtins, not exposed globally to users
+    ValuePtr builtinsRegistry_;
     bool debugMode_;
     std::ostream* stdout_;
     std::ostream* stderr_;

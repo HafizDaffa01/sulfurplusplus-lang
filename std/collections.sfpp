@@ -4,29 +4,29 @@ export this as std/collections;
 // Collection utilities — all backed by native builtins
 
 // List utilities
-let map         = __builtins__.col_map;         // map(list, fn) -> list
-let filter      = __builtins__.col_filter;      // filter(list, fn) -> list
-let reduce      = __builtins__.col_reduce;      // reduce(list, fn, init) -> value
-let any         = __builtins__.col_any;         // any(list, fn) -> bool
-let all         = __builtins__.col_all;         // all(list, fn) -> bool
-let find        = __builtins__.col_find;        // find(list, fn) -> value | null
-let findIndex   = __builtins__.col_findindex;   // findIndex(list, fn) -> int (-1 if not found)
-let flatten     = __builtins__.col_flatten;     // flatten(list) -> list
-let unique      = __builtins__.col_unique;      // unique(list) -> list
-let sort        = __builtins__.col_sort;        // sort(list, fn?) -> list
-let sortBy      = __builtins__.col_sortby;      // sortBy(list, key_fn) -> list
-let groupBy     = __builtins__.col_groupby;     // groupBy(list, key_fn) -> dict
-let zip         = __builtins__.col_zip;         // zip(list, list) -> list<list>
-let take        = __builtins__.col_take;        // take(list, n) -> list
-let drop        = __builtins__.col_drop;        // drop(list, n) -> list
-let count       = __builtins__.col_count;       // count(list, fn?) -> int
-let sum         = __builtins__.col_sum;         // sum(list) -> int|float
-let min         = __builtins__.col_min;         // min(list) -> value
-let max         = __builtins__.col_max;         // max(list) -> value
+expose "col_map" as map;         // map(list, fn) -> list
+expose "col_filter" as filter;      // filter(list, fn) -> list
+expose "col_reduce" as reduce;      // reduce(list, fn, init) -> value
+expose "col_any" as any;         // any(list, fn) -> bool
+expose "col_all" as all;         // all(list, fn) -> bool
+expose "col_find" as find;        // find(list, fn) -> value | null
+expose "col_findindex" as findIndex;   // findIndex(list, fn) -> int (-1 if not found)
+expose "col_flatten" as flatten;     // flatten(list) -> list
+expose "col_unique" as unique;      // unique(list) -> list
+expose "col_sort" as sort;        // sort(list, fn?) -> list
+expose "col_sortby" as sortBy;      // sortBy(list, key_fn) -> list
+expose "col_groupby" as groupBy;     // groupBy(list, key_fn) -> dict
+expose "col_zip" as zip;         // zip(list, list) -> list<list>
+expose "col_take" as take;        // take(list, n) -> list
+expose "col_drop" as drop;        // drop(list, n) -> list
+expose "col_count" as count;       // count(list, fn?) -> int
+expose "col_sum" as sum;         // sum(list) -> int|float
+expose "col_min" as min;         // min(list) -> value
+expose "col_max" as max;         // max(list) -> value
 
 // Dict utilities
-let keys        = __builtins__.col_keys;        // keys(dict) -> list
-let values      = __builtins__.col_values;      // values(dict) -> list
-let entries     = __builtins__.col_entries;     // entries(dict) -> list<[k,v]>
-let merge       = __builtins__.col_merge;       // merge(dict, dict) -> dict
-let hasKey      = __builtins__.col_haskey;      // hasKey(dict, key) -> bool
+expose "col_keys" as keys;        // keys(dict) -> list
+expose "col_values" as values;      // values(dict) -> list
+expose "col_entries" as entries;     // entries(dict) -> list<[k,v]>
+expose "col_merge" as merge;       // merge(dict, dict) -> dict
+expose "col_haskey" as hasKey;      // hasKey(dict, key) -> bool

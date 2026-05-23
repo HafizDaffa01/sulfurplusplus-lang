@@ -8,15 +8,15 @@
 
 ValuePtr DictValue::get(const std::string &key) const {
   for (auto &p : pairs) {
-    if (p.first->isStr() && p.first->asStr() == key)
+    if (p.first.isStr() && p.first.asStr() == key)
       return p.second;
   }
-  return nullptr;
+  return makeNull();
 }
 
 bool DictValue::has(const std::string &key) const {
   for (auto &p : pairs) {
-    if (p.first->isStr() && p.first->asStr() == key)
+    if (p.first.isStr() && p.first.asStr() == key)
       return true;
   }
   return false;
@@ -24,7 +24,7 @@ bool DictValue::has(const std::string &key) const {
 
 void DictValue::set(const std::string &key, ValuePtr val) {
   for (auto &p : pairs) {
-    if (p.first->isStr() && p.first->asStr() == key) {
+    if (p.first.isStr() && p.first.asStr() == key) {
       p.second = val;
       return;
     }
@@ -58,8 +58,10 @@ double Value::asFloat() const {
 }
 
 std::string Value::asStr() const {
-  if (isStr())
-    return std::get<std::string>(data);
+  if (isStr()) {
+    auto s = std::get<std::shared_ptr<std::string>>(data);
+    return s ? *s : "";
+  }
   throw std::runtime_error("Value is not a string");
 }
 
@@ -126,8 +128,8 @@ bool Value::truthy() const {
           return v != 0;
         if constexpr (std::is_same_v<T, double>)
           return v != 0.0 && !std::isnan(v);
-        if constexpr (std::is_same_v<T, std::string>)
-          return !v.empty();
+        if constexpr (std::is_same_v<T, std::shared_ptr<std::string>>)
+          return v && !v->empty();
         if constexpr (std::is_same_v<T, char>)
           return v != '\0';
         if constexpr (std::is_same_v<T, std::shared_ptr<ListValue>>)
@@ -161,8 +163,8 @@ std::string Value::toString() const {
             oss << v;
           return oss.str();
         }
-        if constexpr (std::is_same_v<T, std::string>)
-          return v;
+        if constexpr (std::is_same_v<T, std::shared_ptr<std::string>>)
+          return v ? *v : "";
         if constexpr (std::is_same_v<T, char>)
           return std::string(1, v);
         if constexpr (std::is_same_v<T, std::shared_ptr<FunctionValue>>)
@@ -184,7 +186,7 @@ std::string Value::toString() const {
           for (auto &[k, val] : v->fields) {
             if (!first)
               s += ", ";
-            s += k + ": " + (val ? val->toString() : "null");
+            s += k + ": " + val.toString();
             first = false;
           }
           return s + "}";
@@ -196,7 +198,7 @@ std::string Value::toString() const {
           for (size_t i = 0; i < v->elements.size(); i++) {
             if (i)
               s += ", ";
-            s += v->elements[i] ? v->elements[i]->toString() : "null";
+            s += v->elements[i].toString();
           }
           return s + "]";
         }
@@ -207,7 +209,7 @@ std::string Value::toString() const {
           for (size_t i = 0; i < v->elements.size(); i++) {
             if (i)
               s += ", ";
-            s += v->elements[i] ? v->elements[i]->toString() : "null";
+            s += v->elements[i].toString();
           }
           return s + "}";
         }
@@ -218,9 +220,9 @@ std::string Value::toString() const {
           for (size_t i = 0; i < v->pairs.size(); i++) {
             if (i)
               s += ", ";
-            s += (v->pairs[i].first ? v->pairs[i].first->toString() : "null");
+            s += v->pairs[i].first.toString();
             s += ": ";
-            s += (v->pairs[i].second ? v->pairs[i].second->toString() : "null");
+            s += v->pairs[i].second.toString();
           }
           return s + "}";
         }
@@ -246,7 +248,7 @@ std::string Value::typeName() const {
           return "int_64";
         if constexpr (std::is_same_v<T, double>)
           return "float_64";
-        if constexpr (std::is_same_v<T, std::string>)
+        if constexpr (std::is_same_v<T, std::shared_ptr<std::string>>)
           return "str";
         if constexpr (std::is_same_v<T, char>)
           return "char";

@@ -3,15 +3,35 @@ export this as std/io;
 
 // File I/O — all backed by native builtins
 
-let readFile    = __builtins__.io_readfile;     // readFile(path) -> str
-let writeFile   = __builtins__.io_writefile;    // writeFile(path, content) -> null
-let appendFile  = __builtins__.io_appendfile;   // appendFile(path, content) -> null
-let fileExists  = __builtins__.io_fileexists;   // fileExists(path) -> bool
-let deleteFile  = __builtins__.io_deletefile;   // deleteFile(path) -> null
-let readLines   = __builtins__.io_readlines;    // readLines(path) -> list<str>
-let writeLines  = __builtins__.io_writelines;   // writeLines(path, lines: list) -> null
-let cwd         = __builtins__.io_cwd;          // cwd() -> str
-let listDir     = __builtins__.io_listdir;      // listDir(path) -> list<str>
-let isDir       = __builtins__.io_isdir;        // isDir(path) -> bool
-let isFile      = __builtins__.io_isfile;       // isFile(path) -> bool
-let mkdir       = __builtins__.io_mkdir;        // mkdir(path) -> null
+expose "io_readfile"    as readFile;     // readFile(path) -> str
+expose "io_writefile"   as writeFile;    // writeFile(path, content) -> null
+expose "io_appendfile"  as appendFile;   // appendFile(path, content) -> null
+expose "io_fileexists"  as fileExists;   // fileExists(path) -> bool
+expose "io_deletefile"  as deleteFile;   // deleteFile(path) -> null
+expose "io_readlines"   as readLines;    // readLines(path) -> list<str>
+expose "io_writelines"  as writeLines;   // writeLines(path, lines: list) -> null
+expose "io_cwd"         as cwd;          // cwd() -> str
+expose "io_listdir"     as listDir;      // listDir(path) -> list<str>
+expose "io_isdir"       as isDir;        // isDir(path) -> bool
+expose "io_isfile"      as isFile;       // isFile(path) -> bool
+expose "io_mkdir"       as mkdir;        // mkdir(path) -> null
+expose "Terminal"       as Terminal;     // Terminal I/O Stream
+
+// TIO helpers (renamed to io_)
+let io_e            = TIO.E;           // error
+let io_fe           = TIO.FE;          // fatal error
+let io_w            = TIO.W;           // warning
+
+// Builder helpers
+let io_withCategory = TIO.withCategory; // (errorDict, category) -> errorDict
+let io_withCode     = TIO.withCode;     // (errorDict, code)     -> errorDict
+let io_withHint     = TIO.withHint;     // (errorDict, hint)     -> errorDict
+let io_withContext  = TIO.withContext;  // (errorDict, context)  -> errorDict
+
+expose "io_e" as io_e;
+expose "io_fe" as io_fe;
+expose "io_w" as io_w;
+expose "io_withCategory" as io_withCategory;
+expose "io_withCode" as io_withCode;
+expose "io_withHint" as io_withHint;
+expose "io_withContext" as io_withContext;

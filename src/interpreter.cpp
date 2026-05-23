@@ -55,12 +55,12 @@ void Interpreter::run(const std::vector<StmtPtr> &stmts, const std::string& file
 
 void Interpreter::injectBuiltinsIntoGlobal() {
     auto builtinsVal = globalEnv_->get("__builtins__", -1);
-    if (builtinsVal && builtinsVal->isDict()) {
-        for (const auto& kv : builtinsVal->asDict()->pairs) {
-            if (kv.first->isStr()) {
-                globalEnv_->define(kv.first->asStr(), kv.second, false);
+    if (!builtinsVal.isNull() && builtinsVal.isDict()) {
+        for (const auto& kv : builtinsVal.asDict()->pairs) {
+            if (kv.first.isStr()) {
+                globalEnv_->define(kv.first.asStr(), kv.second, false);
             } else {
-                globalEnv_->define(kv.first->toString(), kv.second, false);
+                globalEnv_->define(kv.first.toString(), kv.second, false);
             }
         }
     }
@@ -181,7 +181,7 @@ void Interpreter::execBlock(const BlockStmt &b,
 }
 
 void Interpreter::execVarDecl(const VarDeclStmt &s) {
-  trace("VarDecl: " + s.keyword + " " + s.name);
+  if (debugMode_) trace("VarDecl: " + s.keyword + " " + s.name);
   ValuePtr val = makeNull();
   if (s.initializer)
     val = evalExpr(*s.initializer);
@@ -247,7 +247,7 @@ void Interpreter::execInterfaceDecl(const InterfaceDeclStmt &s) {
 
 void Interpreter::execIf(const IfStmt &s) {
   auto cond = evalExpr(*s.cond);
-  if (cond->truthy()) {
+  if (cond.truthy()) {
     trace("If: condition true, executing thenBranch");
     execStmt(*s.thenBranch);
   }
@@ -263,7 +263,7 @@ void Interpreter::execWhile(const WhileStmt &s) {
   trace("While: starting loop");
   while (true) {
     auto cond = evalExpr(*s.cond);
-    if (!cond->truthy()) {
+    if (!cond.truthy()) {
       trace("While: condition false, breaking");
       break;
     }
@@ -298,25 +298,25 @@ void Interpreter::execFor(const ForStmt &s) {
     return true;
   };
 
-  if (iterable->isList()) {
-    for (auto &elem : iterable->asList()->elements)
+  if (iterable.isList()) {
+    for (auto &elem : iterable.asList()->elements)
       if (!doBody(elem))
         break;
-  } else if (iterable->isStr()) {
-    for (char c : iterable->asStr())
+  } else if (iterable.isStr()) {
+    for (char c : iterable.asStr())
       if (!doBody(makeStr(std::string(1, c))))
         break;
-  } else if (iterable->isDict()) {
-    for (auto &[k, v] : iterable->asDict()->pairs)
+  } else if (iterable.isDict()) {
+    for (auto &[k, v] : iterable.asDict()->pairs)
       if (!doBody(k))
         break;
-  } else if (iterable->isSet()) {
-    for (auto &elem : iterable->asSet()->elements)
+  } else if (iterable.isSet()) {
+    for (auto &elem : iterable.asSet()->elements)
       if (!doBody(elem))
         break;
   } else {
     throw RuntimeError(
-        "Value of type '" + iterable->typeName() + "' is not iterable", s.line);
+        "Value of type '" + iterable.typeName() + "' is not iterable", s.line);
   }
 }
 
@@ -324,13 +324,13 @@ void Interpreter::execReturn(const ReturnStmt &s) {
   ValuePtr val = makeNull();
   if (s.value)
     val = evalExpr(*s.value);
-  trace("Return: returning " + val->typeName());
+  trace("Return: returning " + val.typeName());
   throw ReturnSignal{val};
 }
 
 void Interpreter::execStreamOut(const StreamOutStmt &s) {
   auto val = evalExpr(*s.value);
-  print(val->toString());
+  print(val.toString());
 }
 
 
@@ -363,9 +363,9 @@ void Interpreter::execImport(const ImportStmt &s) {
 
   auto defineModuleExports = [&](ValuePtr dictVal) {
       if (noLibName) {
-          if (dictVal->isDict()) {
-              for (const auto& kv : dictVal->asDict()->pairs) {
-                  currentEnv_->define(kv.first->toString(), kv.second, true);
+          if (dictVal.isDict()) {
+              for (const auto& kv : dictVal.asDict()->pairs) {
+                  currentEnv_->define(kv.first.toString(), kv.second, true);
               }
           }
       } else {
@@ -449,8 +449,8 @@ void Interpreter::execImport(const ImportStmt &s) {
 
   auto ns = std::make_shared<DictValue>();
   for (const auto& kv : moduleEnv->vars()) {
-    if (kv.first != "__export_alias__") {
-      ns->set(kv.first, kv.second.value);
+    if (kv.name != "__export_alias__") {
+      ns->set(kv.name, kv.var.value);
     }
   }
 
@@ -473,9 +473,13 @@ void Interpreter::execExport(const ExportStmt &s) {
 }
 
 void Interpreter::execExpose(const ExposeStmt &s) {
-  auto builtinsVal = globalEnv_->get("__builtins__");
-  if (builtinsVal && builtinsVal->isDict()) {
-      auto dict = builtinsVal->asDict();
+  std::string file = currentFile();
+  if (file.find("std/") == std::string::npos && file.find("std\\") == std::string::npos) {
+      throw RuntimeError("The 'expose' keyword can only be used inside the standard library (std/)", s.line, "E_NATIVE_403");
+  }
+  
+  if (!builtinsRegistry_.isNull() && builtinsRegistry_.isDict()) {
+      auto dict = builtinsRegistry_.asDict();
       if (dict->has(s.name)) {
           currentEnv_->define(s.alias, dict->get(s.name));
       } else {
@@ -485,6 +489,11 @@ void Interpreter::execExpose(const ExposeStmt &s) {
 }
 
 void Interpreter::execOverwrite(const OverwriteStmt &s) {
+  std::string file = currentFile();
+  if (file.find("std/") == std::string::npos && file.find("std\\") == std::string::npos) {
+      throw RuntimeError("The 'overwrite' keyword can only be used inside the standard library (std/)", s.line, "E_NATIVE_403");
+  }
+
   auto val = evalExpr(*s.value);
   size_t dotPos = s.target.find('.');
   if (dotPos == std::string::npos) {
@@ -497,8 +506,8 @@ void Interpreter::execOverwrite(const OverwriteStmt &s) {
       std::string base = s.target.substr(0, dotPos);
       std::string prop = s.target.substr(dotPos + 1);
       auto baseVal = currentEnv_->get(base, s.line);
-      if (baseVal->isDict()) {
-          baseVal->asDict()->set(prop, val);
+      if (baseVal.isDict()) {
+          baseVal.asDict()->set(prop, val);
       } else {
           throw RuntimeError("Cannot overwrite property on non-dict target '" + base + "'", s.line, "E_RUNTIME_405");
       }
@@ -506,6 +515,11 @@ void Interpreter::execOverwrite(const OverwriteStmt &s) {
 }
 
 void Interpreter::execUnsafe(const UnsafeStmt &s) {
+  std::string file = currentFile();
+  if (file.find("std/") == std::string::npos && file.find("std\\") == std::string::npos) {
+      throw RuntimeError("The 'unsafe' keyword can only be used inside the standard library (std/)", s.line, "E_NATIVE_403");
+  }
+
   trace("Entering unsafe block");
   execStmt(*s.body);
   trace("Leaving unsafe block");
@@ -622,19 +636,19 @@ ValuePtr Interpreter::evalExpr(const Expr &e) {
             }
             auto pv = std::make_shared<PtrValue>();
             pv->target = addr;
-            return std::make_shared<Value>(pv);
+            return Value(pv);
           } else if (auto* mem = std::get_if<MemberExpr>(&node.operand->data)) {
             auto obj = evalExpr(*mem->object);
-            if (obj->isStructInst()) {
-              auto inst = obj->asStructInst();
+            if (obj.isStructInst()) {
+              auto inst = obj.asStructInst();
               return makePtr(&inst->fields[mem->member]);
-            } else if (obj->isClassInst()) {
-              auto inst = obj->asClassInst();
+            } else if (obj.isClassInst()) {
+              auto inst = obj.asClassInst();
               auto addr = inst->members->getAddr(mem->member);
               if (addr) {
                 auto pv = std::make_shared<PtrValue>();
                 pv->target = addr;
-                return std::make_shared<Value>(pv);
+                return Value(pv);
               }
             }
             throw MemoryError("Cannot take address of member '" + mem->member + "'", node.line);
@@ -643,11 +657,11 @@ ValuePtr Interpreter::evalExpr(const Expr &e) {
         }
         if constexpr (std::is_same_v<T, DerefExpr>) {
           auto obj = evalExpr(*node.operand);
-          if (!obj->isPtr()) {
-            throw TypeError("Cannot dereference non-pointer of type " + obj->typeName(), node.line);
+          if (!obj.isPtr()) {
+            throw TypeError("Cannot dereference non-pointer of type " + obj.typeName(), node.line);
           }
-          auto target = obj->asPtr()->target;
-          if (!target || !(*target)) {
+          auto target = obj.asPtr()->target;
+          if (!target || (*target).isNull()) {
             throw MemoryError("Null pointer dereference", node.line);
           }
           return *target;
@@ -697,13 +711,13 @@ ValuePtr Interpreter::evalPSString(const PSStringExpr &e) {
               raw = raw.substr(1, raw.size() - 2);
             sep = raw;
           }
-          if (val->isList()) {
+          if (val.isList()) {
             std::string joined;
             bool first = true;
-            for (auto &e : val->asList()->elements) {
+            for (auto &e : val.asList()->elements) {
               if (!first)
                 joined += sep;
-              joined += e->toString();
+              joined += e.toString();
               first = false;
             }
             result += joined;
@@ -716,13 +730,13 @@ ValuePtr Interpreter::evalPSString(const PSStringExpr &e) {
           int n = 1;
           if (lp != std::string::npos && rp != std::string::npos)
             n = std::stoi(seg.fmtSpec.substr(lp + 1, rp - lp - 1));
-          std::string s = val->toString();
+          std::string s = val.toString();
           for (int i = 0; i < n; i++)
             result += s;
           continue;
         }
       }
-      result += val->toString();
+      result += val.toString();
     }
   }
   return makeStr(result);
@@ -739,26 +753,26 @@ ValuePtr Interpreter::evalBinary(const BinaryExpr &e) {
   // Short-circuit for && and ||
   if (e.op == "&&") {
     auto l = evalExpr(*e.left);
-    if (!l->truthy())
+    if (!l.truthy())
       return makeBool(false);
-    return makeBool(evalExpr(*e.right)->truthy());
+    return makeBool(evalExpr(*e.right).truthy());
   }
   if (e.op == "||") {
     auto l = evalExpr(*e.left);
-    if (l->truthy())
+    if (l.truthy())
       return makeBool(true);
-    return makeBool(evalExpr(*e.right)->truthy());
+    return makeBool(evalExpr(*e.right).truthy());
   }
 
   // Stream output / Bitwise Left Shift operator <<
   if (e.op == "<<") {
     auto left = evalExpr(*e.left);
     std::string stream;
-    if (left->isStr()) {
-      stream = left->asStr();
-    } else if (left->isDict()) {
-      if (auto marker = left->asDict()->get("__stream__")) {
-        stream = marker->asStr();
+    if (left.isStr()) {
+      stream = left.asStr();
+    } else if (left.isDict()) {
+      if (auto marker = left.asDict()->get("__stream__"); !marker.isNull()) {
+        stream = marker.asStr();
       }
     }
 
@@ -771,8 +785,8 @@ ValuePtr Interpreter::evalBinary(const BinaryExpr &e) {
       if (stream == "<Terminal.Return>") {
         std::string severity = "E";
         std::string msg = "Error occurred";
-        if (right->isFn()) {
-          std::string name = right->asFn()->name;
+        if (right.isFn()) {
+          std::string name = right.asFn()->name;
           if (name == "TIO.E" || name == "TIO.Err" || name == "TIO.err") {
             severity = "E";
             msg = "Error occurred";
@@ -783,20 +797,20 @@ ValuePtr Interpreter::evalBinary(const BinaryExpr &e) {
             severity = "W";
             msg = "Warning occurred";
           }
-        } else if (right->isDict()) {
-          auto sVal = right->asDict()->get("severity");
-          auto mVal = right->asDict()->get("message");
-          auto cVal = right->asDict()->get("code");
-          auto catVal = right->asDict()->get("category");
-          if (sVal) severity = sVal->toString();
-          if (mVal) msg = mVal->toString();
+        } else if (right.isDict()) {
+          auto sVal = right.asDict()->get("severity");
+          auto mVal = right.asDict()->get("message");
+          auto cVal = right.asDict()->get("code");
+          auto catVal = right.asDict()->get("category");
+          if (!sVal.isNull()) severity = sVal.toString();
+          if (!mVal.isNull()) msg = mVal.toString();
           // Prepend [category] and/or [code] to the message if present
           std::string prefix;
-          if (catVal) prefix += "[" + catVal->toString() + "] ";
-          if (cVal)   prefix += "[" + cVal->toString() + "] ";
+          if (!catVal.isNull()) prefix += "[" + catVal.toString() + "] ";
+          if (!cVal.isNull())   prefix += "[" + cVal.toString() + "] ";
           if (!prefix.empty()) msg = prefix + msg;
         } else {
-          msg = right->toString();
+          msg = right.toString();
         }
 
         if (severity == "W") {
@@ -809,7 +823,7 @@ ValuePtr Interpreter::evalBinary(const BinaryExpr &e) {
         return left;
       }
 
-      std::string msg = right->toString();
+      std::string msg = right.toString();
       if (stream == "<Terminal.Out>" || stream == "<stdout>") {
         print(msg);
       } else if (stream == "<Terminal.Err>" || stream == "<stderr>") {
@@ -820,8 +834,8 @@ ValuePtr Interpreter::evalBinary(const BinaryExpr &e) {
       return left; // return stream for chaining
     } else {
       auto right = evalExpr(*e.right);
-      if (left->isInt() && right->isInt()) {
-        return makeInt(left->asInt() << right->asInt());
+      if (left.isInt() && right.isInt()) {
+        return makeInt(left.asInt() << right.asInt());
       }
       throw TypeError("Cannot perform bitwise left shift on non-integer types", e.line);
     }
@@ -831,11 +845,11 @@ ValuePtr Interpreter::evalBinary(const BinaryExpr &e) {
   if (e.op == ">>") {
     auto left = evalExpr(*e.left);
     std::string stream;
-    if (left->isStr()) {
-      stream = left->asStr();
-    } else if (left->isDict()) {
-      if (auto marker = left->asDict()->get("__stream__")) {
-        stream = marker->asStr();
+    if (left.isStr()) {
+      stream = left.asStr();
+    } else if (left.isDict()) {
+      if (auto marker = left.asDict()->get("__stream__"); !marker.isNull()) {
+        stream = marker.asStr();
       }
     }
 
@@ -851,42 +865,42 @@ ValuePtr Interpreter::evalBinary(const BinaryExpr &e) {
       } else if (auto *idx = std::get_if<IndexExpr>(&e.right->data)) {
         auto obj = evalExpr(*idx->object);
         auto key = evalExpr(*idx->index);
-        if (obj->isList()) {
-          auto &elems = obj->asList()->elements;
-          int64_t i = key->asInt();
+        if (obj.isList()) {
+          auto &elems = obj.asList()->elements;
+          int64_t i = key.asInt();
           if (i < 0) i += elems.size();
           if (i < 0 || (size_t)i >= elems.size())
             throw IndexError("List index out of bounds", e.line);
           elems[i] = newVal;
-        } else if (obj->isDict()) {
-          obj->asDict()->set(key->toString(), newVal);
+        } else if (obj.isDict()) {
+          obj.asDict()->set(key.toString(), newVal);
         } else {
-          throw TypeError("Cannot index-assign to " + obj->typeName(), e.line);
+          throw TypeError("Cannot index-assign to " + obj.typeName(), e.line);
         }
       } else if (auto *mem = std::get_if<MemberExpr>(&e.right->data)) {
         auto obj = evalExpr(*mem->object);
         if (mem->op == "->") {
-          if (!obj->isPtr()) {
-            throw TypeError("Cannot use '->' on non-pointer object of type '" + obj->typeName() + "'. Use '.' instead.", e.line);
+          if (!obj.isPtr()) {
+            throw TypeError("Cannot use '->' on non-pointer object of type '" + obj.typeName() + "'. Use '.' instead.", e.line);
           }
-          auto target = obj->asPtr()->target;
-          if (!target || !(*target)) {
+          auto target = obj.asPtr()->target;
+          if (!target || (*target).isNull()) {
             throw RuntimeError("Null pointer dereference", e.line, "E_RUNTIME_403");
           }
           obj = *target;
         } else if (mem->op == "." || mem->op == "?.") {
-          if (obj->isPtr()) {
+          if (obj.isPtr()) {
             throw TypeError("Cannot use '" + mem->op + "' on pointer object. Use '->' instead.", e.line);
           }
         }
-        if (obj->isClassInst()) {
-          obj->asClassInst()->members->set(mem->member, newVal, e.line);
-        } else if (obj->isStructInst()) {
-          obj->asStructInst()->fields[mem->member] = newVal;
-        } else if (obj->isDict()) {
-          obj->asDict()->set(mem->member, newVal);
+        if (obj.isClassInst()) {
+          obj.asClassInst()->members->set(mem->member, newVal, e.line);
+        } else if (obj.isStructInst()) {
+          obj.asStructInst()->fields[mem->member] = newVal;
+        } else if (obj.isDict()) {
+          obj.asDict()->set(mem->member, newVal);
         } else {
-          throw RuntimeError("Cannot assign member '" + mem->member + "' on " + obj->typeName(), e.line);
+          throw RuntimeError("Cannot assign member '" + mem->member + "' on " + obj.typeName(), e.line);
         }
       } else {
         throw RuntimeError("Invalid stream extraction target", e.line);
@@ -894,8 +908,8 @@ ValuePtr Interpreter::evalBinary(const BinaryExpr &e) {
       return left; // return stream for chaining
     } else {
       auto right = evalExpr(*e.right);
-      if (left->isInt() && right->isInt()) {
-        return makeInt(left->asInt() >> right->asInt());
+      if (left.isInt() && right.isInt()) {
+        return makeInt(left.asInt() >> right.asInt());
       }
       throw TypeError("Cannot perform bitwise right shift on non-integer types", e.line);
     }
@@ -916,11 +930,11 @@ ValuePtr Interpreter::evalBinary(const BinaryExpr &e) {
 
   // Bitwise
   if (e.op == "&")
-    return makeInt(l->asInt() & r->asInt());
+    return makeInt(l.asInt() & r.asInt());
   if (e.op == "|")
-    return makeInt(l->asInt() | r->asInt());
+    return makeInt(l.asInt() | r.asInt());
   if (e.op == "^")
-    return makeInt(l->asInt() ^ r->asInt());
+    return makeInt(l.asInt() ^ r.asInt());
 
   throw RuntimeError("Unknown binary operator: " + e.op, e.line);
 }
@@ -929,22 +943,22 @@ ValuePtr Interpreter::applyBinaryArith(const std::string &op, ValuePtr l,
                                        ValuePtr r, int line) {
   // String concatenation
   if (op == "+") {
-    if (l->isStr() || r->isStr())
-      return makeStr(l->toString() + r->toString());
-    if (l->isList() && r->isList()) {
+    if (l.isStr() || r.isStr())
+      return makeStr(l.toString() + r.toString());
+    if (l.isList() && r.isList()) {
       auto res = std::make_shared<ListValue>();
-      for (auto &e : l->asList()->elements)
+      for (auto &e : l.asList()->elements)
         res->elements.push_back(e);
-      for (auto &e : r->asList()->elements)
+      for (auto &e : r.asList()->elements)
         res->elements.push_back(e);
       return makeList(res);
     }
   }
 
   // Numeric
-  bool useFloat = l->isFloat() || r->isFloat();
+  bool useFloat = l.isFloat() || r.isFloat();
   if (useFloat) {
-    double a = l->asFloat(), b = r->asFloat();
+    double a = l.asFloat(), b = r.asFloat();
     if (op == "+")
       return makeFloat(a + b);
     if (op == "-")
@@ -961,7 +975,7 @@ ValuePtr Interpreter::applyBinaryArith(const std::string &op, ValuePtr l,
     if (op == "**")
       return makeFloat(std::pow(a, b));
   } else {
-    int64_t a = l->asInt(), b = r->asInt();
+    int64_t a = l.asInt(), b = r.asInt();
     if (op == "+")
       return makeInt(a + b);
     if (op == "-")
@@ -981,28 +995,28 @@ ValuePtr Interpreter::applyBinaryArith(const std::string &op, ValuePtr l,
     if (op == "**")
       return makeFloat(std::pow((double)a, (double)b));
   }
-  throw RuntimeError("Cannot apply '" + op + "' to types " + l->typeName() +
-                         " and " + r->typeName(),
+  throw RuntimeError("Cannot apply '" + op + "' to types " + l.typeName() +
+                         " and " + r.typeName(),
                      line);
 }
 
 ValuePtr Interpreter::applyBinaryCompare(const std::string &op, ValuePtr l,
                                          ValuePtr r, int line) {
   if (op == "==")
-    return makeBool(l->equals(*r));
+    return makeBool(l.equals(r));
   if (op == "!=")
-    return makeBool(!l->equals(*r));
+    return makeBool(!l.equals(r));
 
   auto cmp = [&]() -> int {
-    if (l->isInt() && r->isInt())
-      return (l->asInt() < r->asInt()) ? -1 : (l->asInt() > r->asInt()) ? 1 : 0;
-    if ((l->isInt() || l->isFloat()) && (r->isInt() || r->isFloat())) {
-      double a = l->asFloat(), b = r->asFloat();
+    if (l.isInt() && r.isInt())
+      return (l.asInt() < r.asInt()) ? -1 : (l.asInt() > r.asInt()) ? 1 : 0;
+    if ((l.isInt() || l.isFloat()) && (r.isInt() || r.isFloat())) {
+      double a = l.asFloat(), b = r.asFloat();
       return (a < b) ? -1 : (a > b) ? 1 : 0;
     }
-    if (l->isStr() && r->isStr())
-      return l->asStr().compare(r->asStr());
-    throw TypeError("Cannot compare " + l->typeName() + " and " + r->typeName(),
+    if (l.isStr() && r.isStr())
+      return l.asStr().compare(r.asStr());
+    throw TypeError("Cannot compare " + l.typeName() + " and " + r.typeName(),
                     line);
   };
 
@@ -1021,18 +1035,18 @@ ValuePtr Interpreter::applyBinaryCompare(const std::string &op, ValuePtr l,
 ValuePtr Interpreter::evalUnary(const UnaryExpr &e) {
   auto val = evalExpr(*e.operand);
   if (e.op == "!")
-    return makeBool(!val->truthy());
+    return makeBool(!val.truthy());
   if (e.op == "-") {
-    if (val->isInt())
-      return makeInt(-val->asInt());
-    if (val->isFloat())
-      return makeFloat(-val->asFloat());
-    throw TypeError("Cannot negate " + val->typeName(), e.line);
+    if (val.isInt())
+      return makeInt(-val.asInt());
+    if (val.isFloat())
+      return makeFloat(-val.asFloat());
+    throw TypeError("Cannot negate " + val.typeName(), e.line);
   }
   if (e.op == "~") {
-    if (val->isInt())
-      return makeInt(~val->asInt());
-    throw TypeError("Cannot bitwise-not " + val->typeName(), e.line);
+    if (val.isInt())
+      return makeInt(~val.asInt());
+    throw TypeError("Cannot bitwise-not " + val.typeName(), e.line);
   }
   throw RuntimeError("Unknown unary operator: " + e.op, e.line);
 }
@@ -1057,62 +1071,62 @@ ValuePtr Interpreter::evalAssign(const AssignExpr &e) {
   } else if (auto *idx = std::get_if<IndexExpr>(&e.target->data)) {
     auto obj = evalExpr(*idx->object);
     auto key = evalExpr(*idx->index);
-    if (obj->isList()) {
-      auto &elems = obj->asList()->elements;
-      int64_t i = key->asInt();
+    if (obj.isList()) {
+      auto &elems = obj.asList()->elements;
+      int64_t i = key.asInt();
       if (i < 0)
         i += elems.size();
       if (i < 0 || (size_t)i >= elems.size())
         throw IndexError("List index out of bounds", e.line);
       elems[i] = newVal;
-    } else if (obj->isDict()) {
-      obj->asDict()->set(key->toString(), newVal);
+    } else if (obj.isDict()) {
+      obj.asDict()->set(key.toString(), newVal);
     } else {
-      throw TypeError("Cannot index-assign to " + obj->typeName(), e.line);
+      throw TypeError("Cannot index-assign to " + obj.typeName(), e.line);
     }
   } else if (auto *mem = std::get_if<MemberExpr>(&e.target->data)) {
     auto obj = evalExpr(*mem->object);
     if (mem->op == "->") {
-      if (!obj->isPtr()) {
-        throw TypeError("Cannot use '->' on non-pointer object of type '" + obj->typeName() + "'. Use '.' instead.", e.line);
+      if (!obj.isPtr()) {
+        throw TypeError("Cannot use '->' on non-pointer object of type '" + obj.typeName() + "'. Use '.' instead.", e.line);
       }
-      auto target = obj->asPtr()->target;
-      if (!target || !(*target)) {
+      auto target = obj.asPtr()->target;
+      if (!target || (*target).isNull()) {
         throw RuntimeError("Null pointer dereference", e.line, "E_RUNTIME_403");
       }
       obj = *target;
     } else if (mem->op == "." || mem->op == "?.") {
-      if (obj->isPtr()) {
+      if (obj.isPtr()) {
         throw TypeError("Cannot use '" + mem->op + "' on pointer object. Use '->' instead.", e.line);
       }
-      if (obj->isClassDef()) {
+      if (obj.isClassDef()) {
         throw TypeError("Cannot use '" + mem->op + "' on Class. Use '::' instead.", e.line);
       }
     } else if (mem->op == "::") {
-      if (obj->isClassInst() || obj->isStructInst()) {
-        throw TypeError("Cannot use '::' on instance of '" + obj->typeName() + "'. Use '.' instead.", e.line);
+      if (obj.isClassInst() || obj.isStructInst()) {
+        throw TypeError("Cannot use '::' on instance of '" + obj.typeName() + "'. Use '.' instead.", e.line);
       }
-      if (obj->isPtr()) {
+      if (obj.isPtr()) {
         throw TypeError("Cannot use '::' on pointer object. Use '->' instead.", e.line);
       }
     }
 
-    if (obj->isClassInst()) {
-      obj->asClassInst()->members->set(mem->member, newVal, e.line);
-    } else if (obj->isStructInst()) {
-      obj->asStructInst()->fields[mem->member] = newVal;
-    } else if (obj->isDict()) {
-      obj->asDict()->set(mem->member, newVal);
+    if (obj.isClassInst()) {
+      obj.asClassInst()->members->set(mem->member, newVal, e.line);
+    } else if (obj.isStructInst()) {
+      obj.asStructInst()->fields[mem->member] = newVal;
+    } else if (obj.isDict()) {
+      obj.asDict()->set(mem->member, newVal);
     } else {
       throw RuntimeError("Cannot assign member '" + mem->member + "' on " +
-                             obj->typeName(),
+                             obj.typeName(),
                          e.line);
     }
   } else {
     throw RuntimeError("Invalid assignment target", e.line);
   }
 
-  trace("Assign: assigned to " + newVal->typeName());
+  trace("Assign: assigned to " + newVal.typeName());
   return newVal;
 }
 
@@ -1126,53 +1140,53 @@ ValuePtr Interpreter::evalCall(const CallExpr &e) {
   // Intercept MemberExpr for method calls
   if (auto *mem = std::get_if<MemberExpr>(&e.callee->data)) {
     auto obj = evalExpr(*mem->object);
-    if (obj->isNull() && mem->safe) return makeNull();
+    if (obj.isNull() && mem->safe) return makeNull();
 
     if (mem->op == "->") {
-      if (!obj->isPtr()) {
-        throw TypeError("Cannot use '->' on non-pointer object of type '" + obj->typeName() + "'. Use '.' instead.", e.line);
+      if (!obj.isPtr()) {
+        throw TypeError("Cannot use '->' on non-pointer object of type '" + obj.typeName() + "'. Use '.' instead.", e.line);
       }
-      auto target = obj->asPtr()->target;
-      if (!target || !(*target)) {
+      auto target = obj.asPtr()->target;
+      if (!target || (*target).isNull()) {
         throw RuntimeError("Null pointer dereference", e.line, "E_RUNTIME_403");
       }
       obj = *target;
     } else if (mem->op == "." || mem->op == "?.") {
-      if (obj->isPtr()) {
+      if (obj.isPtr()) {
         throw TypeError("Cannot use '" + mem->op + "' on pointer object. Use '->' instead.", e.line);
       }
-      if (obj->isClassDef()) {
+      if (obj.isClassDef()) {
         throw TypeError("Cannot use '" + mem->op + "' on Class. Use '::' instead.", e.line);
       }
     } else if (mem->op == "::") {
-      if (obj->isClassInst() || obj->isStructInst()) {
-        throw TypeError("Cannot use '::' on instance of '" + obj->typeName() + "'. Use '.' instead.", e.line);
+      if (obj.isClassInst() || obj.isStructInst()) {
+        throw TypeError("Cannot use '::' on instance of '" + obj.typeName() + "'. Use '.' instead.", e.line);
       }
-      if (obj->isPtr()) {
+      if (obj.isPtr()) {
         throw TypeError("Cannot use '::' on pointer object. Use '->' instead.", e.line);
       }
     }
 
-    if (obj->isClassInst()) {
-      auto inst = obj->asClassInst();
+    if (obj.isClassInst()) {
+      auto inst = obj.asClassInst();
       if (inst->members->hasLocal(mem->member) || inst->members->has(mem->member)) {
         return callMethod(inst, mem->member, std::move(args), e.line);
       }
       throw RuntimeError("Method '" + mem->member + "' not found on " + inst->def->name, e.line);
     }
     
-    if (obj->isStructInst()) {
-      auto inst = obj->asStructInst();
+    if (obj.isStructInst()) {
+      auto inst = obj.asStructInst();
       auto it = inst->fields.find(mem->member);
-      if (it != inst->fields.end() && it->second->isFn()) {
-        return callFunction(it->second->asFn(), std::move(args), e.line);
+      if (it != inst->fields.end() && it->second.isFn()) {
+        return callFunction(it->second.asFn(), std::move(args), e.line);
       }
       throw RuntimeError("Method/Field '" + mem->member + "' not found on struct " + inst->def->name, e.line);
     }
     
-    if (obj->isDict()) {
-      auto v = obj->asDict()->get(mem->member);
-      if (v && v->isFn()) return callFunction(v->asFn(), std::move(args), e.line);
+    if (obj.isDict()) {
+      auto v = obj.asDict()->get(mem->member);
+      if (!v.isNull() && v.isFn()) return callFunction(v.asFn(), std::move(args), e.line);
       return callBuiltinMethod(obj, mem->member, std::move(args), e.line);
     }
     
@@ -1183,13 +1197,13 @@ ValuePtr Interpreter::evalCall(const CallExpr &e) {
   // Evaluate callee normally
   auto callee = evalExpr(*e.callee);
 
-  if (callee->isFn()) {
-    return callFunction(callee->asFn(), std::move(args), e.line);
+  if (callee.isFn()) {
+    return callFunction(callee.asFn(), std::move(args), e.line);
   }
 
-  if (callee->isClassDef()) {
+  if (callee.isClassDef()) {
     // Instantiate class
-    auto def = std::get<std::shared_ptr<ClassDef>>(callee->data);
+    auto def = std::get<std::shared_ptr<ClassDef>>(callee.data);
     auto inst = std::make_shared<ClassInstance>();
     inst->def = def;
     inst->members = std::make_shared<Environment>(def->methods);
@@ -1204,7 +1218,7 @@ ValuePtr Interpreter::evalCall(const CallExpr &e) {
     for (auto &[n, method] : def->ctorOrder) {
       if (inst->members->has(method)) {
         auto mv = inst->members->get(method);
-        if (mv->isFn())
+        if (mv.isFn())
           callMethod(inst, method, args, e.line);
       }
     }
@@ -1217,8 +1231,8 @@ ValuePtr Interpreter::evalCall(const CallExpr &e) {
     return makeClassInst(inst);
   }
 
-  if (callee->isStructDef()) {
-    auto def = std::get<std::shared_ptr<StructDef>>(callee->data);
+  if (callee.isStructDef()) {
+    auto def = std::get<std::shared_ptr<StructDef>>(callee.data);
     auto inst = std::make_shared<StructInstance>();
     inst->def = def;
     for (size_t i = 0; i < def->fields.size(); i++) {
@@ -1229,7 +1243,7 @@ ValuePtr Interpreter::evalCall(const CallExpr &e) {
   }
 
   // Built-in method on a class instance (callee is a member expr result)
-  throw RuntimeError("'" + callee->typeName() + "' is not callable", e.line);
+  throw RuntimeError("'" + callee.typeName() + "' is not callable", e.line);
 }
 
 ValuePtr Interpreter::callFunction(std::shared_ptr<FunctionValue> fn,
@@ -1273,9 +1287,9 @@ ValuePtr Interpreter::callMethod(std::shared_ptr<ClassInstance> inst,
   if (!inst->members->has(name))
     throw RuntimeError("Method '" + name + "' not found", line);
   auto mv = inst->members->get(name);
-  if (!mv->isFn())
+  if (!mv.isFn())
     throw RuntimeError("'" + name + "' is not a method", line);
-  auto fn = mv->asFn();
+  auto fn = mv.asFn();
   // Add 'self' to closure
   auto callEnv = std::make_shared<Environment>(fn->closure);
   callEnv->define("self", makeClassInst(inst), false);
@@ -1304,67 +1318,67 @@ ValuePtr Interpreter::evalIndex(const IndexExpr &e) {
   auto obj = evalExpr(*e.object);
   auto key = evalExpr(*e.index);
 
-  if (obj->isList()) {
-    auto &elems = obj->asList()->elements;
-    int64_t i = key->asInt();
+  if (obj.isList()) {
+    auto &elems = obj.asList()->elements;
+    int64_t i = key.asInt();
     if (i < 0)
       i += elems.size();
     if (i < 0 || (size_t)i >= elems.size())
-      throw IndexError("List index " + std::to_string(key->asInt()) +
+      throw IndexError("List index " + std::to_string(key.asInt()) +
                              " out of bounds",
                          e.line);
     return elems[i];
   }
-  if (obj->isDict()) {
-    auto v = obj->asDict()->get(key->toString());
-    return v ? v : makeNull();
+  if (obj.isDict()) {
+    auto v = obj.asDict()->get(key.toString());
+    return !v.isNull() ? v : makeNull();
   }
-  if (obj->isStr()) {
-    int64_t i = key->asInt();
-    const std::string &s = obj->asStr();
+  if (obj.isStr()) {
+    int64_t i = key.asInt();
+    const std::string &s = obj.asStr();
     if (i < 0)
       i += s.size();
     if (i < 0 || (size_t)i >= s.size())
       throw IndexError("String index out of bounds", e.line);
     return makeStr(std::string(1, s[i]));
   }
-  throw TypeError("Cannot index '" + obj->typeName() + "'", e.line);
+  throw TypeError("Cannot index '" + obj.typeName() + "'", e.line);
 }
 
 ValuePtr Interpreter::evalMember(const MemberExpr &e) {
   auto obj = evalExpr(*e.object);
 
   // Safe chaining: if null and safe, return null
-  if (obj->isNull() && e.safe)
+  if (obj.isNull() && e.safe)
     return makeNull();
 
   if (e.op == "->") {
-    if (!obj->isPtr()) {
-      throw TypeError("Cannot use '->' on non-pointer object of type '" + obj->typeName() + "'. Use '.' instead.", e.line);
+    if (!obj.isPtr()) {
+      throw TypeError("Cannot use '->' on non-pointer object of type '" + obj.typeName() + "'. Use '.' instead.", e.line);
     }
-    auto target = obj->asPtr()->target;
-    if (!target || !(*target)) {
+    auto target = obj.asPtr()->target;
+    if (!target || (*target).isNull()) {
       throw RuntimeError("Null pointer dereference", e.line, "E_RUNTIME_403");
     }
     obj = *target;
   } else if (e.op == "." || e.op == "?.") {
-    if (obj->isPtr()) {
+    if (obj.isPtr()) {
       throw TypeError("Cannot use '" + e.op + "' on pointer object. Use '->' instead.", e.line);
     }
-    if (obj->isClassDef()) {
+    if (obj.isClassDef()) {
       throw TypeError("Cannot use '" + e.op + "' on Class. Use '::' instead.", e.line);
     }
   } else if (e.op == "::") {
-    if (obj->isClassInst() || obj->isStructInst()) {
-      throw TypeError("Cannot use '::' on instance of '" + obj->typeName() + "'. Use '.' instead.", e.line);
+    if (obj.isClassInst() || obj.isStructInst()) {
+      throw TypeError("Cannot use '::' on instance of '" + obj.typeName() + "'. Use '.' instead.", e.line);
     }
-    if (obj->isPtr()) {
+    if (obj.isPtr()) {
       throw TypeError("Cannot use '::' on pointer object. Use '->' instead.", e.line);
     }
   }
 
-  if (obj->isClassInst()) {
-    auto inst = obj->asClassInst();
+  if (obj.isClassInst()) {
+    auto inst = obj.asClassInst();
     if (inst->members->hasLocal(e.member) || inst->members->has(e.member))
       return inst->members->get(e.member, e.line);
     // Return bound method
@@ -1372,16 +1386,16 @@ ValuePtr Interpreter::evalMember(const MemberExpr &e) {
         "Member '" + e.member + "' not found on " + inst->def->name, e.line);
   }
 
-  if (obj->isClassDef()) {
-    auto def = std::get<std::shared_ptr<ClassDef>>(obj->data);
+  if (obj.isClassDef()) {
+    auto def = std::get<std::shared_ptr<ClassDef>>(obj.data);
     if (def->methods->has(e.member))
       return def->methods->get(e.member, e.line);
     throw RuntimeError(
         "Static member '" + e.member + "' not found on class " + def->name, e.line);
   }
 
-  if (obj->isStructInst()) {
-    auto inst = obj->asStructInst();
+  if (obj.isStructInst()) {
+    auto inst = obj.asStructInst();
     auto it = inst->fields.find(e.member);
     if (it != inst->fields.end())
       return it->second;
@@ -1390,9 +1404,9 @@ ValuePtr Interpreter::evalMember(const MemberExpr &e) {
                        e.line);
   }
 
-  if (obj->isDict()) {
-    auto v = obj->asDict()->get(e.member);
-    return v ? v : makeNull();
+  if (obj.isDict()) {
+    auto v = obj.asDict()->get(e.member);
+    return !v.isNull() ? v : makeNull();
   }
 
   // Built-in members
@@ -1518,14 +1532,14 @@ ValuePtr Interpreter::evalDelete(const DeleteExpr &e) {
     }
   }
 
-  if (targetVal && targetVal->isClassInst()) {
+  if (!targetVal.isNull() && targetVal.isClassInst()) {
     auto inst = targetVal->asClassInst();
     std::unordered_set<std::string> executed;
     // Run ordered destructors in def->dtorOrder
     for (auto &[n, method] : inst->def->dtorOrder) {
       if (inst->members->has(method)) {
         auto mv = inst->members->get(method);
-        if (mv->isFn()) {
+        if (mv.isFn()) {
           std::vector<ValuePtr> emptyArgs;
           callMethod(inst, method, emptyArgs, e.line);
           executed.insert(method);
@@ -1536,7 +1550,7 @@ ValuePtr Interpreter::evalDelete(const DeleteExpr &e) {
     for (const std::string method : {"cleanup", "destroy", "destructor"}) {
       if (executed.count(method) == 0 && inst->members->has(method)) {
         auto mv = inst->members->get(method);
-        if (mv->isFn()) {
+        if (mv.isFn()) {
           std::vector<ValuePtr> emptyArgs;
           callMethod(inst, method, emptyArgs, e.line);
         }
@@ -1689,7 +1703,7 @@ ValuePtr Interpreter::callBuiltinMethod(ValuePtr obj, const std::string &method,
       if (args.empty())
         return makeBool(false);
       for (auto &e : lv->elements)
-        if (e->equals(*args[0]))
+        if (e.equals(args[0]))
           return makeBool(true);
       return makeBool(false);
     }
@@ -1780,7 +1794,7 @@ ValuePtr Interpreter::callBuiltinMethod(ValuePtr obj, const std::string &method,
     if (method == "has" || method == "contains") {
       if (args.empty())
         return makeBool(false);
-      return makeBool(dv->get(args[0]->toString()) != nullptr);
+      return makeBool(!dv->get(args[0]->toString()).isNull());
     }
     if (method == "remove") {
       if (!args.empty()) {
@@ -1849,6 +1863,12 @@ void Interpreter::registerBuiltins() {
     }
     return makeNull();
   });
+  defNative("now", [](std::vector<ValuePtr> args) -> ValuePtr {
+    auto now = std::chrono::high_resolution_clock::now();
+    auto duration = now.time_since_epoch();
+    auto micros = std::chrono::duration_cast<std::chrono::microseconds>(duration).count();
+    return makeInt((int64_t)micros);
+  });
 
   // type / typeof
   defNative("typeOf", [](std::vector<ValuePtr> args) -> ValuePtr {
@@ -1866,19 +1886,19 @@ void Interpreter::registerBuiltins() {
   defNative("toStr", [](std::vector<ValuePtr> args) -> ValuePtr {
     if (args.empty())
       return makeStr("");
-    return makeStr(args[0]->toString());
+    return makeStr(args[0].toString());
   });
   defNative("toInt", [](std::vector<ValuePtr> args) -> ValuePtr {
     if (args.empty())
       return makeInt(0);
     auto &v = args[0];
-    if (v->isInt())
+    if (v.isInt())
       return v;
-    if (v->isFloat())
-      return makeInt((int64_t)v->asFloat());
-    if (v->isStr()) {
+    if (v.isFloat())
+      return makeInt((int64_t)v.asFloat());
+    if (v.isStr()) {
       try {
-        return makeInt(std::stoll(v->asStr()));
+        return makeInt(std::stoll(v.asStr()));
       } catch (...) {
       }
     }
@@ -1888,13 +1908,13 @@ void Interpreter::registerBuiltins() {
     if (args.empty())
       return makeFloat(0.0);
     auto &v = args[0];
-    if (v->isFloat())
+    if (v.isFloat())
       return v;
-    if (v->isInt())
-      return makeFloat((double)v->asInt());
-    if (v->isStr()) {
+    if (v.isInt())
+      return makeFloat((double)v.asInt());
+    if (v.isStr()) {
       try {
-        return makeFloat(std::stod(v->asStr()));
+        return makeFloat(std::stod(v.asStr()));
       } catch (...) {
       }
     }
@@ -1903,7 +1923,7 @@ void Interpreter::registerBuiltins() {
   defNative("toBool", [](std::vector<ValuePtr> args) -> ValuePtr {
     if (args.empty())
       return makeBool(false);
-    return makeBool(args[0]->truthy());
+    return makeBool(args[0].truthy());
   });
 
   // len
@@ -1911,14 +1931,14 @@ void Interpreter::registerBuiltins() {
     if (args.empty())
       return makeInt(0);
     auto &v = args[0];
-    if (v->isStr())
-      return makeInt(v->asStr().size());
-    if (v->isList())
-      return makeInt(v->asList()->elements.size());
-    if (v->isDict())
-      return makeInt(v->asDict()->pairs.size());
-    if (v->isSet())
-      return makeInt(v->asSet()->elements.size());
+    if (v.isStr())
+      return makeInt(v.asStr().size());
+    if (v.isList())
+      return makeInt(v.asList()->elements.size());
+    if (v.isDict())
+      return makeInt(v.asDict()->pairs.size());
+    if (v.isSet())
+      return makeInt(v.asSet()->elements.size());
     return makeInt(0);
   });
 
@@ -1949,35 +1969,35 @@ void Interpreter::registerBuiltins() {
   defNative("abs", [](std::vector<ValuePtr> a) -> ValuePtr {
     if (a.empty())
       return makeInt(0);
-    if (a[0]->isFloat())
-      return makeFloat(std::abs(a[0]->asFloat()));
-    return makeInt(std::abs(a[0]->asInt()));
+    if (a[0].isFloat())
+      return makeFloat(std::abs(a[0].asFloat()));
+    return makeInt(std::abs(a[0].asInt()));
   });
   defNative("sqrt", [](std::vector<ValuePtr> a) -> ValuePtr {
-    double val = a.empty() ? 0 : a[0]->asFloat();
+    double val = a.empty() ? 0 : a[0].asFloat();
     if (val < 0)
       throw MathError("Cannot take square root of negative number");
     return makeFloat(std::sqrt(val));
   });
   defNative("pow", [](std::vector<ValuePtr> a) -> ValuePtr {
-    return makeFloat(std::pow(a.size() < 2 ? 1 : a[0]->asFloat(),
-                              a.size() < 2 ? 1 : a[1]->asFloat()));
+    return makeFloat(std::pow(a.size() < 2 ? 1 : a[0].asFloat(),
+                              a.size() < 2 ? 1 : a[1].asFloat()));
   });
   defNative("floor", [](std::vector<ValuePtr> a) -> ValuePtr {
-    return makeInt((int64_t)std::floor(a.empty() ? 0 : a[0]->asFloat()));
+    return makeInt((int64_t)std::floor(a.empty() ? 0 : a[0].asFloat()));
   });
   defNative("ceil", [](std::vector<ValuePtr> a) -> ValuePtr {
-    return makeInt((int64_t)std::ceil(a.empty() ? 0 : a[0]->asFloat()));
+    return makeInt((int64_t)std::ceil(a.empty() ? 0 : a[0].asFloat()));
   });
   defNative("round", [](std::vector<ValuePtr> a) -> ValuePtr {
-    return makeInt((int64_t)std::round(a.empty() ? 0 : a[0]->asFloat()));
+    return makeInt((int64_t)std::round(a.empty() ? 0 : a[0].asFloat()));
   });
   defNative("max", [](std::vector<ValuePtr> a) -> ValuePtr {
     if (a.empty())
       return makeNull();
     ValuePtr m = a[0];
     for (auto &v : a)
-      if (v->asFloat() > m->asFloat())
+      if (v.asFloat() > m.asFloat())
         m = v;
     return m;
   });
@@ -1986,27 +2006,27 @@ void Interpreter::registerBuiltins() {
       return makeNull();
     ValuePtr m = a[0];
     for (auto &v : a)
-      if (v->asFloat() < m->asFloat())
+      if (v.asFloat() < m.asFloat())
         m = v;
     return m;
   });
   defNative("sin", [](std::vector<ValuePtr> a) -> ValuePtr {
-    return makeFloat(std::sin(a.empty() ? 0 : a[0]->asFloat()));
+    return makeFloat(std::sin(a.empty() ? 0 : a[0].asFloat()));
   });
   defNative("cos", [](std::vector<ValuePtr> a) -> ValuePtr {
-    return makeFloat(std::cos(a.empty() ? 0 : a[0]->asFloat()));
+    return makeFloat(std::cos(a.empty() ? 0 : a[0].asFloat()));
   });
   defNative("tan", [](std::vector<ValuePtr> a) -> ValuePtr {
-    return makeFloat(std::tan(a.empty() ? 0 : a[0]->asFloat()));
+    return makeFloat(std::tan(a.empty() ? 0 : a[0].asFloat()));
   });
   defNative("log", [](std::vector<ValuePtr> a) -> ValuePtr {
-    return makeFloat(std::log(a.empty() ? 1 : a[0]->asFloat()));
+    return makeFloat(std::log(a.empty() ? 1 : a[0].asFloat()));
   });
   defNative("log2", [](std::vector<ValuePtr> a) -> ValuePtr {
-    return makeFloat(std::log2(a.empty() ? 1 : a[0]->asFloat()));
+    return makeFloat(std::log2(a.empty() ? 1 : a[0].asFloat()));
   });
   defNative("log10", [](std::vector<ValuePtr> a) -> ValuePtr {
-    return makeFloat(std::log10(a.empty() ? 1 : a[0]->asFloat()));
+    return makeFloat(std::log10(a.empty() ? 1 : a[0].asFloat()));
   });
 
   // exit
@@ -2252,8 +2272,8 @@ void Interpreter::registerBuiltins() {
                   auto inst = target->asClassInst();
                   for (auto& kv : inst->members->vars()) {
                       auto pair = std::make_shared<ListValue>();
-                      pair->elements.push_back(makeStr(kv.first));
-                      pair->elements.push_back(kv.second.value);
+                      pair->elements.push_back(makeStr(kv.name));
+                      pair->elements.push_back(kv.var.value);
                       lv->elements.push_back(makeList(pair));
                   }
                   return makeList(lv);
@@ -2275,12 +2295,12 @@ void Interpreter::registerBuiltins() {
               if (target->isClassInst()) {
                   auto inst = target->asClassInst();
                   for (auto& kv : inst->members->vars()) {
-                      lv->elements.push_back(makeStr(kv.first));
+                      lv->elements.push_back(makeStr(kv.name));
                   }
               } else if (target->isClassDef()) {
                   auto def = std::get<std::shared_ptr<ClassDef>>(target->data);
                   for (auto& kv : def->methods->vars()) {
-                      lv->elements.push_back(makeStr(kv.first));
+                      lv->elements.push_back(makeStr(kv.name));
                   }
               } else if (target->isStructInst()) {
                   auto inst = target->asStructInst();
@@ -2753,7 +2773,7 @@ void Interpreter::registerBuiltins() {
     for (auto& elem : args[0]->asList()->elements) {
       bool found = false;
       for (auto& ex : res->elements) {
-        if (elem->equals(*ex)) { found = true; break; }
+        if (elem.equals(ex)) { found = true; break; }
       }
       if (!found) res->elements.push_back(elem);
     }
@@ -2798,7 +2818,7 @@ void Interpreter::registerBuiltins() {
     for (auto& elem : args[0]->asList()->elements) {
       std::string key = callFunction(fn, {elem}, -1)->toString();
       auto bucket = res->get(key);
-      if (!bucket) {
+      if (bucket.isNull()) {
         auto nl = std::make_shared<ListValue>();
         bucket = makeList(nl);
         res->set(key, bucket);
@@ -2955,5 +2975,5 @@ void Interpreter::registerBuiltins() {
     return makeStr("Executed: " + args[0]->toString());
   });
 
-  globalEnv_->define("__builtins__", makeDict(builtins), false);
+  builtinsRegistry_ = makeDict(builtins);
 }

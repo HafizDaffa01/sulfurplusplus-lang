@@ -4,6 +4,6 @@ export this as std/specials;
 // Special operations including matrix and linear algebra
 
 // Matrix functions will be mapped here once implemented natively
-let m_Add = __builtins__.matrix_add;
-let m_Mul = __builtins__.matrix_mul;
-let m_Transpose = __builtins__.matrix_transpose;
+expose "matrix_add" as m_Add;
+expose "matrix_mul" as m_Mul;
+expose "matrix_transpose" as m_Transpose;

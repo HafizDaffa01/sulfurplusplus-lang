@@ -9,7 +9,7 @@
 #include <stdexcept>
 
 struct Value;
-using ValuePtr = std::shared_ptr<Value>;
+using ValuePtr = Value;
 
 struct Environment;
 
@@ -73,7 +73,7 @@ using ValueVariant = std::variant<
     bool,
     int64_t,
     double,
-    std::string,
+    std::shared_ptr<std::string>,
     char,
     std::shared_ptr<FunctionValue>,
     std::shared_ptr<ClassDef>,
@@ -93,7 +93,8 @@ struct Value {
     explicit Value(bool b) : data(b) {}
     explicit Value(int64_t i) : data(i) {}
     explicit Value(double d) : data(d) {}
-    explicit Value(const std::string& s) : data(s) {}
+    explicit Value(const std::string& s) : data(std::make_shared<std::string>(s)) {}
+    explicit Value(std::shared_ptr<std::string> s) : data(s) {}
     explicit Value(char c) : data(c) {}
     explicit Value(std::shared_ptr<FunctionValue> f) : data(f) {}
     explicit Value(std::shared_ptr<ClassDef> c) : data(c) {}
@@ -105,11 +106,14 @@ struct Value {
     explicit Value(std::shared_ptr<DictValue> dv) : data(dv) {}
     explicit Value(std::shared_ptr<PtrValue> pv) : data(pv) {}
 
+    Value* operator->() { return this; }
+    const Value* operator->() const { return this; }
     bool isNull() const { return std::holds_alternative<std::monostate>(data); }
+
     bool isBool() const { return std::holds_alternative<bool>(data); }
     bool isInt() const  { return std::holds_alternative<int64_t>(data); }
     bool isFloat() const{ return std::holds_alternative<double>(data); }
-    bool isStr() const  { return std::holds_alternative<std::string>(data); }
+    bool isStr() const  { return std::holds_alternative<std::shared_ptr<std::string>>(data); }
     bool isChar() const { return std::holds_alternative<char>(data); }
     bool isList() const { return std::holds_alternative<std::shared_ptr<ListValue>>(data); }
     bool isDict() const { return std::holds_alternative<std::shared_ptr<DictValue>>(data); }
@@ -140,22 +144,50 @@ struct Value {
     bool equals(const Value& other) const;
 };
 
-inline ValuePtr makeNull()  { return std::make_shared<Value>(); }
-inline ValuePtr makeBool(bool b)      { return std::make_shared<Value>(b); }
-inline ValuePtr makeInt(int64_t i)    { return std::make_shared<Value>(i); }
-inline ValuePtr makeFloat(double d)   { return std::make_shared<Value>(d); }
-inline ValuePtr makeStr(const std::string& s) { return std::make_shared<Value>(s); }
-inline ValuePtr makeChar(char c)      { return std::make_shared<Value>(c); }
-inline ValuePtr makeList(std::shared_ptr<ListValue> lv) { return std::make_shared<Value>(lv); }
-inline ValuePtr makeDict(std::shared_ptr<DictValue> dv) { return std::make_shared<Value>(dv); }
-inline ValuePtr makeSet(std::shared_ptr<SetValue> sv)   { return std::make_shared<Value>(sv); }
-inline ValuePtr makeFn(std::shared_ptr<FunctionValue> f){ return std::make_shared<Value>(f); }
-inline ValuePtr makeClassDef(std::shared_ptr<ClassDef> c) { return std::make_shared<Value>(c); }
-inline ValuePtr makeClassInst(std::shared_ptr<ClassInstance> ci) { return std::make_shared<Value>(ci); }
-inline ValuePtr makeStructDef(std::shared_ptr<StructDef> sd) { return std::make_shared<Value>(sd); }
-inline ValuePtr makeStructInst(std::shared_ptr<StructInstance> si) { return std::make_shared<Value>(si); }
+inline ValuePtr makeNull();
+inline ValuePtr makeBool(bool b);
+inline ValuePtr makeInt(int64_t i);
+inline ValuePtr makeFloat(double d)   { return Value(d); }
+inline ValuePtr makeStr(const std::string& s) { return Value(s); }
+inline ValuePtr makeChar(char c)      { return Value(c); }
+inline ValuePtr makeList(std::shared_ptr<ListValue> lv) { return Value(lv); }
+inline ValuePtr makeDict(std::shared_ptr<DictValue> dv) { return Value(dv); }
+inline ValuePtr makeSet(std::shared_ptr<SetValue> sv)   { return Value(sv); }
+inline ValuePtr makeFn(std::shared_ptr<FunctionValue> f){ return Value(f); }
+inline ValuePtr makeClassDef(std::shared_ptr<ClassDef> c) { return Value(c); }
+inline ValuePtr makeClassInst(std::shared_ptr<ClassInstance> ci) { return Value(ci); }
+inline ValuePtr makeStructDef(std::shared_ptr<StructDef> sd) { return Value(sd); }
+inline ValuePtr makeStructInst(std::shared_ptr<StructInstance> si) { return Value(si); }
 inline ValuePtr makePtr(ValuePtr *target) {
   auto pv = std::make_shared<PtrValue>();
   pv->target = target;
-  return std::make_shared<Value>(pv);
+  return Value(pv);
+}
+
+// Optimization: Pre-allocate common values
+struct ValueCache {
+    Value nullVal;
+    Value trueVal;
+    Value falseVal;
+    std::vector<Value> smallInts;
+
+    static ValueCache& get() {
+        static ValueCache instance;
+        return instance;
+    }
+
+private:
+    ValueCache() : nullVal(), trueVal(true), falseVal(false) {
+        smallInts.reserve(257);
+        for (int i = 0; i <= 256; i++) {
+            smallInts.push_back(Value((int64_t)i));
+        }
+    }
+};
+
+inline ValuePtr makeNull()  { return ValueCache::get().nullVal; }
+inline ValuePtr makeBool(bool b)      { return b ? ValueCache::get().trueVal : ValueCache::get().falseVal; }
+inline ValuePtr makeInt(int64_t i)    {
+    if (i >= 0 && i <= 256) return ValueCache::get().smallInts[i];
+    return Value(i);
 }

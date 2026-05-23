@@ -94,9 +94,13 @@ struct IOError : public SulfurError {
         : SulfurError(code, msg, line, hint) {}
 };
 
+#include "value.hpp"
+
+// ... (rest of error types)
+
 // Control flow signals (not real errors)
 struct ReturnSignal {
-    std::shared_ptr<struct Value> value;
+    ValuePtr value;
 };
 struct BreakSignal  {};
 struct ContinueSignal {};

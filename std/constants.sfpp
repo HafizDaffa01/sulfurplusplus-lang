@@ -1,18 +1,18 @@
 export this as std/constants;
 
-let SECOND = __builtins__.SECOND;
-let MINUTE = __builtins__.MINUTE;
-let HOUR = __builtins__.HOUR;
-let DAY = __builtins__.DAY;
-let WEEK = __builtins__.WEEK;
+expose "SECOND" as SECOND;
+expose "MINUTE" as MINUTE;
+expose "HOUR" as HOUR;
+expose "DAY" as DAY;
+expose "WEEK" as WEEK;
 
-let RUNTIME_VERSION = __builtins__.RUNTIME_VERSION;
-let SULFUR_VERSION = __builtins__.SULFUR_VERSION;
-let FUSE_VERSION = __builtins__.FUSE_VERSION;
-let COMBUST_VERSION = __builtins__.COMBUST_VERSION;
-let BUILD_MODE = __builtins__.BUILD_MODE;
-let DEBUG_MODE = __builtins__.DEBUG_MODE;
+expose "RUNTIME_VERSION" as RUNTIME_VERSION;
+expose "SULFUR_VERSION" as SULFUR_VERSION;
+expose "FUSE_VERSION" as FUSE_VERSION;
+expose "COMBUST_VERSION" as COMBUST_VERSION;
+expose "BUILD_MODE" as BUILD_MODE;
+expose "DEBUG_MODE" as DEBUG_MODE;
 
-let OBJ_NAME = __builtins__.OBJ_NAME;
-let GET_ITEM = __builtins__.GET_ITEM;
-let PROPS = __builtins__.PROPS;
+expose "OBJ_NAME" as OBJ_NAME;
+expose "GET_ITEM" as GET_ITEM;
+expose "PROPS" as PROPS;

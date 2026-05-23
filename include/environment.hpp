@@ -1,6 +1,6 @@
 #pragma once
 #include <string>
-#include <map>
+#include <unordered_map>
 #include <memory>
 #include "value.hpp"
 
@@ -12,7 +12,8 @@ struct VarEntry {
 class Environment : public std::enable_shared_from_this<Environment> {
 public:
     explicit Environment(std::shared_ptr<Environment> parent = nullptr)
-        : parent_(std::move(parent)) {}
+        : parent_(std::move(parent)) {
+    }
 
     void define(const std::string& name, ValuePtr val,
                 bool mutable_ = true);
@@ -23,14 +24,15 @@ public:
     bool has(const std::string& name) const;
     bool hasLocal(const std::string& name) const;
 
-
-
     std::shared_ptr<Environment> parent() const { return parent_; }
 
-    std::map<std::string, VarEntry>& vars() { return vars_; }
+    struct Entry {
+        std::string name;
+        VarEntry var;
+    };
+    std::vector<Entry>& vars() { return vars_; }
 
 private:
     std::shared_ptr<Environment> parent_;
-    std::map<std::string, VarEntry> vars_;
-
+    std::vector<Entry> vars_;
 };
