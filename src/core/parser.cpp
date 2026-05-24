@@ -157,6 +157,8 @@ StmtPtr Parser::parseStmt() {
     return parseFor();
   if (check(TokenType::RETURN))
     return parseReturn();
+  if (check(TokenType::THROW))
+    return parseThrow();
   if (check(TokenType::IMPORT))
     return parseImport();
   if (check(TokenType::EXPORT))
@@ -411,6 +413,14 @@ StmtPtr Parser::parseReturn() {
     val = parseExpr();
   expect(TokenType::SEMICOLON, "Expected ';' after return statement");
   return std::make_unique<Stmt>(ReturnStmt{std::move(val), line});
+}
+
+StmtPtr Parser::parseThrow() {
+  int line = peek().line;
+  advance(); // 'throw'
+  auto val = parseExpr();
+  expect(TokenType::SEMICOLON, "Expected ';' after throw statement");
+  return std::make_unique<Stmt>(ThrowStmt{std::move(val), line});
 }
 
 

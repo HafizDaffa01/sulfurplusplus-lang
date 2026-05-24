@@ -42,6 +42,35 @@ static std::string readFile(const std::string& path) {
     return ss.str();
 }
 
+static void printErrorContext(const std::string& filename, int errorLine, const std::string& colorCode = "\033[31;1m") {
+    if (errorLine <= 0 || filename == "<repl>") return;
+    try {
+        std::ifstream f(filename);
+        if (!f) return;
+        std::string line;
+        std::vector<std::string> lines;
+        while (std::getline(f, line)) {
+            lines.push_back(line);
+        }
+        
+        int startLine = std::max(1, errorLine - 5);
+        int endLine = std::min((int)lines.size(), errorLine + 2);
+
+        std::cerr << "\n";
+        for (int i = startLine; i <= endLine; i++) {
+            if (i == errorLine) {
+                std::cerr << "\033[36m" << std::setw(4) << i << " |\033[0m " << colorCode << lines[i - 1] << "\033[0m\n";
+                size_t firstNonSpace = lines[i - 1].find_first_not_of(" \t");
+                if (firstNonSpace == std::string::npos) firstNonSpace = 0;
+                std::cerr << "       " << colorCode << std::string(firstNonSpace, ' ') << "^-- Here\033[0m\n";
+            } else {
+                std::cerr << "\033[36m" << std::setw(4) << i << " |\033[0m " << lines[i - 1] << "\n";
+            }
+        }
+        std::cerr << "\n";
+    } catch (...) {}
+}
+
 static void printBanner() {
     std::cerr
         << "+-----------------------------------+\n"
@@ -85,12 +114,16 @@ static void runREPL(bool debug) {
                 std::cerr << "\n[DEBUG] Execution finished in " << formatDuration(duration) << "\n";
             }
         } catch (SulfurError& e) {
-            std::cerr << "[" << e.code << "]";
+            std::string colorCode = "\033[31;1m";
+            if (e.code.rfind("FE_", 0) == 0) colorCode = "\033[35;1m";
+            else if (e.code.rfind("W_", 0) == 0) colorCode = "\033[33;1m";
+
+            std::cerr << colorCode << "[" << e.code << "]";
             if (e.line > 0) std::cerr << " line " << e.line;
-            std::cerr << ": " << e.what() << "\n";
-            if (!e.hint.empty()) std::cerr << "  hint: " << e.hint << "\n";
+            std::cerr << ": " << e.what() << "\033[0m\n";
+            if (!e.hint.empty()) std::cerr << "  \033[33mhint: " << e.hint << "\033[0m\n";
         } catch (std::exception& e) {
-            std::cerr << "Error: " << e.what() << "\n";
+            std::cerr << "\033[31;1mError: " << e.what() << "\033[0m\n";
         }
     }
 }
@@ -128,12 +161,17 @@ static int runFile(const std::string& filename, bool debug, bool watch) {
             }
             return 0;
         } catch (SulfurError& e) {
+            std::string colorCode = "\033[31;1m";
+            if (e.code.rfind("FE_", 0) == 0) colorCode = "\033[35;1m";
+            else if (e.code.rfind("W_", 0) == 0) colorCode = "\033[33;1m";
+
             std::string loc = e.line > 0 ? " line " + std::to_string(e.line) : "";
-            std::cerr << "[" << e.code << "]" << loc << ": " << e.what() << "\n";
-            if (!e.hint.empty()) std::cerr << "  hint: " << e.hint << "\n";
+            std::cerr << colorCode << "[" << e.code << "]" << loc << ": " << e.what() << "\033[0m\n";
+            printErrorContext(filename, e.line, colorCode);
+            if (!e.hint.empty()) std::cerr << "  \033[33mhint: " << e.hint << "\033[0m\n";
             return 1;
         } catch (std::exception& e) {
-            std::cerr << "Error: " << e.what() << "\n";
+            std::cerr << "\033[31;1mError: " << e.what() << "\033[0m\n";
             return 1;
         }
     };

@@ -50,6 +50,7 @@ private:
     void execWhile(const WhileStmt& s);
     void execFor(const ForStmt& s);
     void execReturn(const ReturnStmt& s);
+    void execThrow(const ThrowStmt& s);
     void execStreamOut(const StreamOutStmt& s);
 
     void execImport(const ImportStmt& s);

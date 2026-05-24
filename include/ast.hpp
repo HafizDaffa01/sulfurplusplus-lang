@@ -288,12 +288,17 @@ struct TryCatchStmt {
   int line;
 };
 
+struct ThrowStmt {
+  ExprPtr value;
+  int line;
+};
+
 struct Stmt {
   std::variant<VarDeclStmt, FnDeclStmt, ReturnStmt, BreakStmt, ContinueStmt,
                BlockStmt, IfStmt, WhileStmt, ForStmt, ClassDeclStmt,
                StructDeclStmt, InterfaceDeclStmt, ExprStmt, StreamOutStmt,
                ImportStmt, ExportStmt, UnsafeStmt, DeferStmt, TryCatchStmt,
-               ExposeStmt, OverwriteStmt>
+               ExposeStmt, OverwriteStmt, ThrowStmt>
       data;
 
   template <typename T> Stmt(T &&v) : data(std::forward<T>(v)) {}

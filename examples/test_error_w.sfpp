@@ -1,0 +1,9 @@
+import std/io as io;
+
+var err = io.io_w("This is a warning");
+err = io.io_withCode(err, "DEPRECATED_API");
+err = io.io_withHint(err, "Use the new v2 API instead.");
+
+throw err;
+
+io.Terminal.Out << "Program successfully continued after the warning!" << io.Terminal.EOL;

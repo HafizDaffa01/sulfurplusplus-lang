@@ -32,6 +32,7 @@ private:
     StmtPtr parseWhile();
     StmtPtr parseFor();
     StmtPtr parseReturn();
+    StmtPtr parseThrow();
 
     StmtPtr parseImport();
     StmtPtr parseExport();

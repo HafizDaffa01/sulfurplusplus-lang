@@ -11,6 +11,7 @@
 #include <iostream>
 #include <cmath>
 #include <iostream>
+#include <iomanip>
 #include <thread>
 #include <chrono>
 
@@ -123,6 +124,8 @@ void Interpreter::execStmt(const Stmt &s) {
           execFor(node);
         else if constexpr (std::is_same_v<T, ReturnStmt>)
           execReturn(node);
+        else if constexpr (std::is_same_v<T, ThrowStmt>)
+          execThrow(node);
         else if constexpr (std::is_same_v<T, BreakStmt>)
           throw BreakSignal{};
         else if constexpr (std::is_same_v<T, ContinueStmt>)
@@ -328,6 +331,46 @@ void Interpreter::execReturn(const ReturnStmt &s) {
     val = evalExpr(*s.value);
   trace("Return: returning " + val.typeName());
   throw ReturnSignal{val};
+}
+
+void Interpreter::execThrow(const ThrowStmt &s) {
+  ValuePtr val = evalExpr(*s.value);
+  trace("Throw: " + val.toString());
+
+  if (val.isDict()) {
+      auto dict = val.asDict();
+      std::string msg = "Unknown error";
+      std::string code = "RUNTIME_500";
+      std::string hint = "";
+      std::string severity = "E";
+
+      for (const auto& kv : dict->pairs) {
+          if (kv.first.isStr()) {
+              std::string key = kv.first.asStr();
+              if (key == "message") msg = kv.second.isStr() ? kv.second.asStr() : kv.second.toString();
+              else if (key == "code") code = kv.second.isStr() ? kv.second.asStr() : kv.second.toString();
+              else if (key == "hint") hint = kv.second.isStr() ? kv.second.asStr() : kv.second.toString();
+              else if (key == "severity") severity = kv.second.isStr() ? kv.second.asStr() : kv.second.toString();
+          }
+      }
+      
+      if (code.find(severity + "_") != 0) {
+          code = severity + "_" + code;
+      }
+      
+      if (severity == "W") {
+          std::string colorCode = "\033[33;1m"; // Yellow
+          std::string loc = s.line > 0 ? " line " + std::to_string(s.line) : "";
+          std::cerr << colorCode << "[" << code << "]" << loc << ": " << msg << "\033[0m\n";
+          
+          if (!hint.empty()) std::cerr << "  \033[33mhint: " << hint << "\033[0m\n";
+          return;
+      }
+      
+      throw RuntimeError(msg, s.line, code, hint);
+  }
+
+  throw RuntimeError(val.isStr() ? val.asStr() : val.toString(), s.line);
 }
 
 void Interpreter::execStreamOut(const StreamOutStmt &s) {

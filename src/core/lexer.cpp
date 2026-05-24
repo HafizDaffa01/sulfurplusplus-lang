@@ -33,6 +33,7 @@ static const std::unordered_map<std::string, TokenType> KEYWORDS = {
     {"defer",     TokenType::DEFER},
     {"try",       TokenType::TRY},
     {"catch",     TokenType::CATCH},
+    {"throw",     TokenType::THROW},
     {"ptr",       TokenType::PTR},
     {"new",       TokenType::NEW},
     {"delete",    TokenType::DELETE},
