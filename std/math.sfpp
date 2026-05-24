@@ -8,6 +8,10 @@ expose "INF" as INF;
 expose "NEG_INF" as NEG_INF;
 expose "NAN" as NAN;
 
+// Complex numbers support
+expose "complex" as complex;
+expose "real" as real;
+expose "imag" as imag;
 expose "abs" as abs;
 expose "sqrt" as sqrt;
 expose "pow" as pow;
@@ -22,3 +26,30 @@ expose "tan" as tan;
 expose "log" as log;
 expose "log2" as log2;
 expose "log10" as log10;
+
+expose "asin" as asin;
+expose "acos" as acos;
+expose "atan" as atan;
+expose "atan2" as atan2;
+
+expose "sinh" as sinh;
+expose "cosh" as cosh;
+expose "tanh" as tanh;
+expose "asinh" as asinh;
+expose "acosh" as acosh;
+expose "atanh" as atanh;
+
+expose "exp" as exp;
+expose "cbrt" as cbrt;
+expose "hypot" as hypot;
+
+expose "erf" as erf;
+expose "erfc" as erfc;
+expose "tgamma" as tgamma;
+expose "lgamma" as lgamma;
+
+expose "complex" as complex;
+expose "real" as real;
+expose "imag" as imag;
+expose "conj" as conj;
+expose "arg" as arg;

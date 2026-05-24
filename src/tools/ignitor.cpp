@@ -8,15 +8,19 @@
 namespace fs = std::filesystem;
 
 void printHelp() {
-    std::cout << "Ignitor - Sulfur++ Embedded Deployment Tool\n\n"
-              << "Usage:\n"
-              << "  ignitor <command> [arguments]\n\n"
-              << "Commands:\n"
-              << "  init           Initialize a new Sulfur++ embedded project\n"
-              << "  flash          Flash the binary from the 'flash/' directory to the target\n"
-              << "                 Options:\n"
-              << "                 --bin  Save binary only, bypass flashing to target\n"
-              << "  help, -h       Show this help message\n";
+    std::cout << "ignitor - Sulfur++ Embedded Deployment Tool\n\n"
+              << "USAGE:\n"
+              << "    ignitor <COMMAND> [OPTIONS]\n\n"
+              << "DESCRIPTION:\n"
+              << "    Flashes, manages, and provisions Sulfur++ code onto embedded IoT devices.\n\n"
+              << "COMMANDS:\n"
+              << "    init           Initialize a new Sulfur++ embedded deployment project\n"
+              << "    flash          Compile and flash the binary payload to the target device\n\n"
+              << "OPTIONS:\n"
+              << "    --bin          (flash only) Generate payload binary but bypass the device flash process\n"
+              << "    -h, --help     Print this help message\n\n"
+              << "NOTES:\n"
+              << "    Device configuration is managed in 'ignitor.toml'.\n";
 }
 
 int main(int argc, char* argv[]) {

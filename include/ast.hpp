@@ -10,7 +10,7 @@ struct Stmt;
 using ExprPtr = std::unique_ptr<Expr>;
 using StmtPtr = std::unique_ptr<Stmt>;
 
-// ─── Expression Nodes ────────────────────────────────────────────────────────
+// --- Expression Nodes --------------------------------------------------------
 
 struct IntLitExpr {
   int64_t value;
@@ -159,7 +159,7 @@ struct Expr {
   }
 };
 
-// ─── Statement Nodes ─────────────────────────────────────────────────────────
+// --- Statement Nodes ---------------------------------------------------------
 
 struct VarDeclStmt {
   std::string keyword; // let, var, auto, dyn

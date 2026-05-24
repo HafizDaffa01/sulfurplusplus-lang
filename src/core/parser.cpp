@@ -60,8 +60,8 @@ std::vector<StmtPtr> Parser::parse() {
   return stmts;
 }
 
-// ─── parseType
-// ────────────────────────────────────────────────────────────────
+// --- parseType
+// ----------------------------------------------------------------
 
 std::string Parser::parseType() {
   static const std::vector<TokenType> typeTokens = {
@@ -105,8 +105,8 @@ std::string Parser::parseType() {
   return type;
 }
 
-// ─── parseParamList
-// ───────────────────────────────────────────────────────────
+// --- parseParamList
+// -----------------------------------------------------------
 
 std::vector<std::pair<std::string, std::string>> Parser::parseParamList() {
   std::vector<std::pair<std::string, std::string>> params;
@@ -125,8 +125,8 @@ std::vector<std::pair<std::string, std::string>> Parser::parseParamList() {
   return params;
 }
 
-// ─── parseStmt
-// ────────────────────────────────────────────────────────────────
+// --- parseStmt
+// ----------------------------------------------------------------
 
 StmtPtr Parser::parseStmt() {
   int line = peek().line;
@@ -563,7 +563,7 @@ StmtPtr Parser::parseExprStmt() {
   return std::make_unique<Stmt>(ExprStmt{std::move(expr), line});
 }
 
-// ─── Expressions ─────────────────────────────────────────────────────────────
+// --- Expressions -------------------------------------------------------------
 
 ExprPtr Parser::parseExpr() { return parseAssign(); }
 
@@ -910,8 +910,8 @@ ExprPtr Parser::parsePrimary() {
   throw ParseError("Unexpected token '" + peek().value + "'", peek().line);
 }
 
-// ─── parsePSString
-// ────────────────────────────────────────────────────────────
+// --- parsePSString
+// ------------------------------------------------------------
 
 ExprPtr Parser::parsePSString(const std::string &raw, int line) {
   // Parse ps"..." raw content into segments

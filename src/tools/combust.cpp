@@ -74,7 +74,7 @@ static void printErrorContext(const std::string& filename, int errorLine, const 
 static void printBanner() {
     std::cerr
         << "+-----------------------------------+\n"
-        << "|  combust - Sulfur++ Runtime v1.0  |\n"
+        << "|  combust - Sulfur++ Runtime  |\n"
         << "+-----------------------------------+\n";
 }
 
@@ -188,7 +188,7 @@ static int runFile(const std::string& filename, bool debug, bool watch) {
             auto cur = std::filesystem::last_write_time(filename);
             if (cur != lastWrite) {
                 lastWrite = cur;
-                std::cerr << "\n[combust] File changed — reloading...\n";
+                std::cerr << "\n[combust] File changed - reloading...\n";
                 runOnce();
             }
         } catch (...) {}
@@ -216,18 +216,17 @@ int main(int argc, char* argv[]) {
         }
         else if (arg == "--help" || arg == "-h") {
             std::cout <<
-                "combust — Sulfur++ Runtime\n\n"
-                "Usage:\n"
-                "  combust <file.sfpp>          Run a Sulfur++ program\n"
-                "  combust <file.sfpp> --debug  Run with debug trace\n"
-                "  combust <file.sfpp> --watch  Run and reload on file change\n"
-                "  combust                      Start interactive REPL\n"
-                "  combust --version            Show version\n\n"
-                "Options:\n"
-                "  -d, --debug    Enable debug/trace mode\n"
-                "  -w, --watch    Watch mode (auto-reload)\n"
-                "  -v, --version  Show version\n"
-                "  -h, --help     Show this help\n";
+                "combust - The Sulfur++ Execution Engine\n\n"
+                "USAGE:\n"
+                "    combust [OPTIONS] [FILE]\n\n"
+                "DESCRIPTION:\n"
+                "    Executes Sulfur++ scripts (.sfpp). If no file is provided, an interactive\n"
+                "    REPL session is started.\n\n"
+                "OPTIONS:\n"
+                "    -d, --debug      Enable verbose debug tracing and memory tracking\n"
+                "    -w, --watch      Start the runtime in watch mode (auto-reloads on save)\n"
+                "    -v, --version    Print version information\n"
+                "    -h, --help       Print this help message\n";
             return 0;
         }
         else if (arg[0] != '-') {

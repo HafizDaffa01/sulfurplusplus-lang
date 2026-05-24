@@ -7,6 +7,7 @@
 #include <variant>
 #include <functional>
 #include <stdexcept>
+#include <complex>
 
 struct Value;
 using ValuePtr = Value;
@@ -74,6 +75,7 @@ using ValueVariant = std::variant<
     bool,
     int64_t,
     double,
+    std::complex<double>,
     std::shared_ptr<std::string>,
     char,
     std::shared_ptr<FunctionValue>,
@@ -94,6 +96,7 @@ struct Value {
     explicit Value(bool b) : data(b) {}
     explicit Value(int64_t i) : data(i) {}
     explicit Value(double d) : data(d) {}
+    explicit Value(std::complex<double> c) : data(c) {}
     explicit Value(const std::string& s) : data(std::make_shared<std::string>(s)) {}
     explicit Value(std::shared_ptr<std::string> s) : data(s) {}
     explicit Value(char c) : data(c) {}
@@ -114,6 +117,7 @@ struct Value {
     bool isBool() const { return std::holds_alternative<bool>(data); }
     bool isInt() const  { return std::holds_alternative<int64_t>(data); }
     bool isFloat() const{ return std::holds_alternative<double>(data); }
+    bool isComplex() const { return std::holds_alternative<std::complex<double>>(data); }
     bool isStr() const  { return std::holds_alternative<std::shared_ptr<std::string>>(data); }
     bool isChar() const { return std::holds_alternative<char>(data); }
     bool isList() const { return std::holds_alternative<std::shared_ptr<ListValue>>(data); }
@@ -128,6 +132,7 @@ struct Value {
     bool asBool() const;
     int64_t asInt() const;
     double asFloat() const;
+    std::complex<double> asComplex() const;
     std::string asStr() const;
     char asChar() const;
     std::shared_ptr<FunctionValue> asFn() const;
@@ -149,6 +154,7 @@ inline ValuePtr makeNull();
 inline ValuePtr makeBool(bool b);
 inline ValuePtr makeInt(int64_t i);
 inline ValuePtr makeFloat(double d)   { return Value(d); }
+inline ValuePtr makeComplex(std::complex<double> c) { return Value(c); }
 inline ValuePtr makeStr(const std::string& s) { return Value(s); }
 inline ValuePtr makeChar(char c)      { return Value(c); }
 inline ValuePtr makeList(std::shared_ptr<ListValue> lv) { return Value(lv); }

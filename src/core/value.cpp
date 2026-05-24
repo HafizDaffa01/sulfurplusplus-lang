@@ -3,8 +3,8 @@
 #include <sstream>
 #include <stdexcept>
 
-// ─── DictValue
-// ────────────────────────────────────────────────────────────────
+// --- DictValue
+// ----------------------------------------------------------------
 
 ValuePtr DictValue::get(const std::string &key) const {
   for (auto &p : pairs) {
@@ -32,8 +32,8 @@ void DictValue::set(const std::string &key, ValuePtr val) {
   pairs.push_back({makeStr(key), val});
 }
 
-// ─── Value accessors
-// ──────────────────────────────────────────────────────────
+// --- Value accessors
+// ----------------------------------------------------------
 
 bool Value::asBool() const {
   if (isBool())
@@ -54,7 +54,19 @@ double Value::asFloat() const {
     return std::get<double>(data);
   if (isInt())
     return static_cast<double>(std::get<int64_t>(data));
+  if (isComplex())
+    return std::get<std::complex<double>>(data).real();
   throw std::runtime_error("Value is not a float");
+}
+
+std::complex<double> Value::asComplex() const {
+    if (isComplex())
+        return std::get<std::complex<double>>(data);
+    if (isFloat())
+        return std::complex<double>(std::get<double>(data), 0.0);
+    if (isInt())
+        return std::complex<double>(static_cast<double>(std::get<int64_t>(data)), 0.0);
+    throw std::runtime_error("Value is not a complex number");
 }
 
 std::string Value::asStr() const {
@@ -113,8 +125,8 @@ std::shared_ptr<PtrValue> Value::asPtr() const {
   throw std::runtime_error("Value is not a pointer");
 }
 
-// ─── Truthy
-// ───────────────────────────────────────────────────────────────────
+// --- Truthy
+// -------------------------------------------------------------------
 
 bool Value::truthy() const {
   return std::visit(
@@ -128,6 +140,8 @@ bool Value::truthy() const {
           return v != 0;
         if constexpr (std::is_same_v<T, double>)
           return v != 0.0 && !std::isnan(v);
+        if constexpr (std::is_same_v<T, std::complex<double>>)
+          return v.real() != 0.0 || v.imag() != 0.0;
         if constexpr (std::is_same_v<T, std::shared_ptr<std::string>>)
           return v && !v->empty();
         if constexpr (std::is_same_v<T, char>)
@@ -141,8 +155,8 @@ bool Value::truthy() const {
       data);
 }
 
-// ─── toString
-// ─────────────────────────────────────────────────────────────────
+// --- toString
+// -----------------------------------------------------------------
 
 std::string Value::toString() const {
   return std::visit(
@@ -161,6 +175,25 @@ std::string Value::toString() const {
             oss << intpart;
           else
             oss << v;
+          return oss.str();
+        }
+        if constexpr (std::is_same_v<T, std::complex<double>>) {
+          std::ostringstream oss;
+          oss << "(";
+          double r = v.real();
+          double i = v.imag();
+          
+          auto formatNum = [](double d) -> std::string {
+              std::ostringstream nss;
+              double ip;
+              if (std::modf(d, &ip) == 0.0 && std::abs(d) < 1e15) nss << ip;
+              else nss << d;
+              return nss.str();
+          };
+
+          oss << formatNum(r);
+          if (i >= 0) oss << "+";
+          oss << formatNum(i) << "i)";
           return oss.str();
         }
         if constexpr (std::is_same_v<T, std::shared_ptr<std::string>>)
@@ -233,8 +266,8 @@ std::string Value::toString() const {
       data);
 }
 
-// ─── typeName
-// ─────────────────────────────────────────────────────────────────
+// --- typeName
+// -----------------------------------------------------------------
 
 std::string Value::typeName() const {
   return std::visit(
@@ -248,6 +281,8 @@ std::string Value::typeName() const {
           return "int_64";
         if constexpr (std::is_same_v<T, double>)
           return "float_64";
+        if constexpr (std::is_same_v<T, std::complex<double>>)
+          return "complex_128";
         if constexpr (std::is_same_v<T, std::shared_ptr<std::string>>)
           return "str";
         if constexpr (std::is_same_v<T, char>)
@@ -275,8 +310,8 @@ std::string Value::typeName() const {
       data);
 }
 
-// ─── equals
-// ───────────────────────────────────────────────────────────────────
+// --- equals
+// -------------------------------------------------------------------
 
 bool Value::equals(const Value &other) const {
   if (isNull() && other.isNull())
@@ -291,6 +326,12 @@ bool Value::equals(const Value &other) const {
     return (double)asInt() == other.asFloat();
   if (isFloat() && other.isInt())
     return asFloat() == (double)other.asInt();
+  if (isComplex() || other.isComplex()) {
+      if ((isComplex() || isFloat() || isInt()) && (other.isComplex() || other.isFloat() || other.isInt())) {
+          return asComplex() == other.asComplex();
+      }
+      return false;
+  }
   if (isStr() && other.isStr())
     return asStr() == other.asStr();
   if (isChar() && other.isChar())

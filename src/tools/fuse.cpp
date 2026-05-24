@@ -13,7 +13,7 @@
 
 namespace fs = std::filesystem;
 
-// ─── Helpers ──────────────────────────────────────────────────────────────────
+// --- Helpers ------------------------------------------------------------------
 
 static bool isWhitespace(const std::string& s) {
     for (char c : s)
@@ -38,24 +38,28 @@ static void printBanner() {
 
 static void printHelp() {
     std::cout <<
-        "fuse -- Sulfur++ Package Manager\n\n"
-        "Usage:\n"
-        "  fuse init                        Initialize a new Sulfur++ project\n"
-        "  fuse add <user>/<package>        Install a package from GitHub\n"
-        "  fuse add local <path>            Install a local package\n"
-        "  fuse rem <user>/<package>        Remove an installed package\n"
-        "  fuse update                      Update all installed packages\n"
-        "  fuse update <user>/<package>     Update a specific package\n"
-        "  fuse list                        List installed packages\n"
-        "  fuse run <script>                Run a script from fuse.json\n"
-        "  fuse publish                     Create a publishable package template\n"
-        "  fuse --help                      Show this help message\n"
-        "  fuse --version                   Show version\n\n"
-        "Packages are stored in the packages/ directory.\n"
-        "Import syntax: import user/package;\n";
+        "fuse - Sulfur++ Package Manager\n\n"
+        "USAGE:\n"
+        "    fuse <COMMAND> [OPTIONS]\n\n"
+        "DESCRIPTION:\n"
+        "    Manages dependencies, projects, and execution for the Sulfur++ ecosystem.\n\n"
+        "COMMANDS:\n"
+        "    init                     Initialize a new Sulfur++ project in the current directory\n"
+        "    add <user/repo>          Install a package from a GitHub repository\n"
+        "    add local <path>         Install a local package from your filesystem\n"
+        "    rem <user/repo>          Remove an installed package\n"
+        "    update [user/repo]       Update all or a specific installed package\n"
+        "    list                     List all installed packages in the current project\n"
+        "    run <script>             Execute a script defined in fuse.json\n"
+        "    publish                  Create a template structure for publishing a package\n\n"
+        "OPTIONS:\n"
+        "    -v, --version            Print version information\n"
+        "    -h, --help               Print this help message\n\n"
+        "NOTES:\n"
+        "    Packages are stored in the 'packages/' directory. Use 'import <user/repo>;' in your code.\n";
 }
 
-// ─── JSON helpers (minimal, no deps) ─────────────────────────────────────────
+// --- JSON helpers (minimal, no deps) -----------------------------------------
 
 // Read raw fuse.json into string
 static std::string readFuseJson() {
@@ -152,7 +156,7 @@ static std::string jsonRemDep(const std::string& content, const std::string& pkg
     return content.substr(0, open + 1) + newBody + content.substr(close);
 }
 
-// ─── packages/ path helpers ────────────────────────────────────────────────
+// --- packages/ path helpers ------------------------------------------------
 
 // packages/user/repo.sfpp
 static fs::path packagePath(const std::string& user, const std::string& repo) {
@@ -178,7 +182,7 @@ static void writeMockPackage(const fs::path& dest, const std::string& user, cons
       << "}\n";
 }
 
-// ─── Command handlers ──────────────────────────────────────────────────────────
+// --- Command handlers ----------------------------------------------------------
 
 static void handleInit() {
     printBanner();
@@ -596,7 +600,7 @@ static void handlePublish() {
         << "+--------------------------------------------------+\n";
 }
 
-// ─── main ──────────────────────────────────────────────────────────────────────
+// --- main ----------------------------------------------------------------------
 
 int main(int argc, char* argv[]) {
     std::signal(SIGINT, [](int sig) {

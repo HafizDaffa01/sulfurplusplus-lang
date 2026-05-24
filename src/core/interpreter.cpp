@@ -17,8 +17,8 @@
 
 
 
-// ─── Constructor
-// ──────────────────────────────────────────────────────────────
+// --- Constructor
+// --------------------------------------------------------------
 
 Interpreter::Interpreter(bool debugMode)
     : debugMode_(debugMode), stdout_(&std::cout), stderr_(&std::cerr),
@@ -28,8 +28,8 @@ Interpreter::Interpreter(bool debugMode)
   registerBuiltins();
 }
 
-// ─── run
-// ──────────────────────────────────────────────────────────────────────
+// --- run
+// ----------------------------------------------------------------------
 
 void Interpreter::run(const std::vector<StmtPtr> &stmts, const std::string& filepath) {
   std::string absPath = filepath;
@@ -55,9 +55,8 @@ void Interpreter::run(const std::vector<StmtPtr> &stmts, const std::string& file
 }
 
 void Interpreter::injectBuiltinsIntoGlobal() {
-    auto builtinsVal = globalEnv_->get("__builtins__", -1);
-    if (!builtinsVal.isNull() && builtinsVal.isDict()) {
-        for (const auto& kv : builtinsVal.asDict()->pairs) {
+    if (!builtinsRegistry_.isNull() && builtinsRegistry_.isDict()) {
+        for (const auto& kv : builtinsRegistry_.asDict()->pairs) {
             if (kv.first.isStr()) {
                 globalEnv_->define(kv.first.asStr(), kv.second, false);
             } else {
@@ -67,8 +66,8 @@ void Interpreter::injectBuiltinsIntoGlobal() {
     }
 }
 
-// ─── Environment helpers
-// ──────────────────────────────────────────────────────
+// --- Environment helpers
+// ------------------------------------------------------
 
 void Interpreter::pushEnv() {
   currentEnv_ = std::make_shared<Environment>(currentEnv_);
@@ -84,8 +83,8 @@ void Interpreter::trace(const std::string &msg) {
     *stderr_ << "[TRACE] " << msg << "\n";
 }
 
-// ─── Output helpers
-// ───────────────────────────────────────────────────────────
+// --- Output helpers
+// -----------------------------------------------------------
 
 void Interpreter::print(const std::string &s) { *stdout_ << s; }
 void Interpreter::printErr(const std::string &s) { *stderr_ << s; }
@@ -97,8 +96,8 @@ std::string Interpreter::readLine() {
 
 
 
-// ─── execStmt
-// ─────────────────────────────────────────────────────────────────
+// --- execStmt
+// -----------------------------------------------------------------
 
 void Interpreter::execStmt(const Stmt &s) {
   std::visit(
@@ -586,7 +585,7 @@ void Interpreter::execTryCatch(const TryCatchStmt &s) {
     execStmt(*s.tryBody);
     runFinally();
   } catch (const FatalError&) {
-    // FatalError is always re-thrown — cannot be caught
+    // FatalError is always re-thrown - cannot be caught
     runFinally();
     throw;
   } catch (const SulfurError& err) {
@@ -617,8 +616,8 @@ void Interpreter::execTryCatch(const TryCatchStmt &s) {
   }
 }
 
-// ─── evalExpr
-// ─────────────────────────────────────────────────────────────────
+// --- evalExpr
+// -----------------------------------------------------------------
 
 ValuePtr Interpreter::evalExpr(const Expr &e) {
   return std::visit(
@@ -1001,6 +1000,20 @@ ValuePtr Interpreter::applyBinaryArith(const std::string &op, ValuePtr l,
   }
 
   // Numeric
+  bool useComplex = l.isComplex() || r.isComplex();
+  if (useComplex) {
+      std::complex<double> a = l.asComplex(), b = r.asComplex();
+      if (op == "+") return makeComplex(a + b);
+      if (op == "-") return makeComplex(a - b);
+      if (op == "*") return makeComplex(a * b);
+      if (op == "/") {
+          if (b == 0.0) throw MathError("Division by zero", line);
+          return makeComplex(a / b);
+      }
+      if (op == "**") return makeComplex(std::pow(a, b));
+      if (op == "%") throw MathError("Modulo operation is not defined for complex numbers", line);
+  }
+
   bool useFloat = l.isFloat() || r.isFloat();
   if (useFloat) {
     double a = l.asFloat(), b = r.asFloat();
@@ -1086,6 +1099,8 @@ ValuePtr Interpreter::evalUnary(const UnaryExpr &e) {
       return makeInt(-val.asInt());
     if (val.isFloat())
       return makeFloat(-val.asFloat());
+    if (val.isComplex())
+      return makeComplex(-val.asComplex());
     throw TypeError("Cannot negate " + val.typeName(), e.line);
   }
   if (e.op == "~") {
@@ -1638,8 +1653,8 @@ ValuePtr Interpreter::evalDelete(const DeleteExpr &e) {
   return makeNull();
 }
 
-// ─── Built-in methods
-// ─────────────────────────────────────────────────────────
+// --- Built-in methods
+// ---------------------------------------------------------
 
 ValuePtr Interpreter::callBuiltinMethod(ValuePtr obj, const std::string &method,
                                         std::vector<ValuePtr> args, int line) {
@@ -1887,8 +1902,8 @@ ValuePtr Interpreter::callBuiltinMethod(ValuePtr obj, const std::string &method,
   throw RuntimeError("No method '" + method + "' on " + obj->typeName(), line);
 }
 
-// ─── Built-in functions
-// ───────────────────────────────────────────────────────
+// --- Built-in functions
+// -------------------------------------------------------
 
 void Interpreter::registerBuiltins() {
   auto builtins = std::make_shared<DictValue>();
@@ -2033,23 +2048,41 @@ void Interpreter::registerBuiltins() {
     return makeList(lv);
   });
 
+  // Complex constructors & utils
+  defNative("complex", [](std::vector<ValuePtr> a) -> ValuePtr {
+    double real = a.size() > 0 ? a[0].asFloat() : 0.0;
+    double imag = a.size() > 1 ? a[1].asFloat() : 0.0;
+    return makeComplex(std::complex<double>(real, imag));
+  });
+  defNative("real", [](std::vector<ValuePtr> a) -> ValuePtr {
+    if (a.empty()) return makeFloat(0.0);
+    if (a[0].isComplex()) return makeFloat(a[0].asComplex().real());
+    return makeFloat(a[0].asFloat());
+  });
+  defNative("imag", [](std::vector<ValuePtr> a) -> ValuePtr {
+    if (a.empty()) return makeFloat(0.0);
+    if (a[0].isComplex()) return makeFloat(a[0].asComplex().imag());
+    return makeFloat(0.0);
+  });
+
   // Math functions
   defNative("abs", [](std::vector<ValuePtr> a) -> ValuePtr {
-    if (a.empty())
-      return makeInt(0);
-    if (a[0].isFloat())
-      return makeFloat(std::abs(a[0].asFloat()));
+    if (a.empty()) return makeInt(0);
+    if (a[0].isComplex()) return makeFloat(std::abs(a[0].asComplex()));
+    if (a[0].isFloat()) return makeFloat(std::abs(a[0].asFloat()));
     return makeInt(std::abs(a[0].asInt()));
   });
   defNative("sqrt", [](std::vector<ValuePtr> a) -> ValuePtr {
-    double val = a.empty() ? 0 : a[0].asFloat();
-    if (val < 0)
-      throw MathError("Cannot take square root of negative number");
+    if (a.empty()) return makeFloat(0.0);
+    if (a[0].isComplex()) return makeComplex(std::sqrt(a[0].asComplex()));
+    double val = a[0].asFloat();
+    if (val < 0) return makeComplex(std::sqrt(std::complex<double>(val, 0)));
     return makeFloat(std::sqrt(val));
   });
   defNative("pow", [](std::vector<ValuePtr> a) -> ValuePtr {
-    return makeFloat(std::pow(a.size() < 2 ? 1 : a[0].asFloat(),
-                              a.size() < 2 ? 1 : a[1].asFloat()));
+    if (a.size() < 2) return makeFloat(1.0);
+    if (a[0].isComplex() || a[1].isComplex()) return makeComplex(std::pow(a[0].asComplex(), a[1].asComplex()));
+    return makeFloat(std::pow(a[0].asFloat(), a[1].asFloat()));
   });
   defNative("floor", [](std::vector<ValuePtr> a) -> ValuePtr {
     return makeInt((int64_t)std::floor(a.empty() ? 0 : a[0].asFloat()));
@@ -2079,22 +2112,225 @@ void Interpreter::registerBuiltins() {
     return m;
   });
   defNative("sin", [](std::vector<ValuePtr> a) -> ValuePtr {
-    return makeFloat(std::sin(a.empty() ? 0 : a[0].asFloat()));
+    if (a.empty()) return makeFloat(0.0);
+    if (a[0].isComplex()) return makeComplex(std::sin(a[0].asComplex()));
+    return makeFloat(std::sin(a[0].asFloat()));
   });
   defNative("cos", [](std::vector<ValuePtr> a) -> ValuePtr {
-    return makeFloat(std::cos(a.empty() ? 0 : a[0].asFloat()));
+    if (a.empty()) return makeFloat(0.0);
+    if (a[0].isComplex()) return makeComplex(std::cos(a[0].asComplex()));
+    return makeFloat(std::cos(a[0].asFloat()));
   });
   defNative("tan", [](std::vector<ValuePtr> a) -> ValuePtr {
-    return makeFloat(std::tan(a.empty() ? 0 : a[0].asFloat()));
+    if (a.empty()) return makeFloat(0.0);
+    if (a[0].isComplex()) return makeComplex(std::tan(a[0].asComplex()));
+    return makeFloat(std::tan(a[0].asFloat()));
   });
   defNative("log", [](std::vector<ValuePtr> a) -> ValuePtr {
-    return makeFloat(std::log(a.empty() ? 1 : a[0].asFloat()));
+    if (a.empty()) return makeFloat(1.0);
+    if (a[0].isComplex() || a[0].asFloat() < 0) return makeComplex(std::log(a[0].asComplex()));
+    return makeFloat(std::log(a[0].asFloat()));
   });
   defNative("log2", [](std::vector<ValuePtr> a) -> ValuePtr {
-    return makeFloat(std::log2(a.empty() ? 1 : a[0].asFloat()));
+    if (a.empty()) return makeFloat(1.0);
+    if (a[0].isComplex() || a[0].asFloat() < 0) {
+        std::complex<double> z = a[0].asComplex();
+        return makeComplex(std::log(z) / std::log(2.0));
+    }
+    return makeFloat(std::log2(a[0].asFloat()));
   });
   defNative("log10", [](std::vector<ValuePtr> a) -> ValuePtr {
-    return makeFloat(std::log10(a.empty() ? 1 : a[0].asFloat()));
+    if (a.empty()) return makeFloat(1.0);
+    if (a[0].isComplex() || a[0].asFloat() < 0) return makeComplex(std::log10(a[0].asComplex()));
+    return makeFloat(std::log10(a[0].asFloat()));
+  });
+
+  // Inverse trig
+  defNative("asin", [](std::vector<ValuePtr> a) -> ValuePtr {
+      return makeFloat(std::asin(a.empty() ? 0 : a[0].asFloat()));
+  });
+  defNative("acos", [](std::vector<ValuePtr> a) -> ValuePtr {
+      return makeFloat(std::acos(a.empty() ? 0 : a[0].asFloat()));
+  });
+  defNative("atan", [](std::vector<ValuePtr> a) -> ValuePtr {
+      return makeFloat(std::atan(a.empty() ? 0 : a[0].asFloat()));
+  });
+  defNative("atan2", [](std::vector<ValuePtr> a) -> ValuePtr {
+      return makeFloat(std::atan2(a.size() < 1 ? 0 : a[0].asFloat(), a.size() < 2 ? 0 : a[1].asFloat()));
+  });
+
+  // Matrix functions
+  defNative("matrix_add", [this](std::vector<ValuePtr> a) -> ValuePtr {
+      if (a.size() < 2) throw MathError("matrix_add requires 2 arguments");
+      auto m1 = a[0];
+      auto m2 = a[1];
+      if (!m1.isList() || !m2.isList()) throw MathError("matrix_add arguments must be matrices");
+      auto& lst1 = m1.asList()->elements;
+      auto& lst2 = m2.asList()->elements;
+      if (lst1.size() != lst2.size()) throw MathError("Matrix row dimensions mismatch");
+      auto res = std::make_shared<ListValue>();
+      for (size_t i = 0; i < lst1.size(); i++) {
+          if (!lst1[i].isList() || !lst2[i].isList()) throw MathError("Matrix row must be a list");
+          auto& row1 = lst1[i].asList()->elements;
+          auto& row2 = lst2[i].asList()->elements;
+          if (row1.size() != row2.size()) throw MathError("Matrix column dimensions mismatch");
+          auto newRow = std::make_shared<ListValue>();
+          for (size_t j = 0; j < row1.size(); j++) {
+              newRow->elements.push_back(this->applyBinaryArith("+", row1[j], row2[j], 0));
+          }
+          res->elements.push_back(makeList(newRow));
+      }
+      return makeList(res);
+  });
+
+  defNative("matrix_mul", [this](std::vector<ValuePtr> a) -> ValuePtr {
+      if (a.size() < 2) throw MathError("matrix_mul requires 2 arguments");
+      auto m1 = a[0];
+      auto m2 = a[1];
+      if (!m1.isList() || !m2.isList()) throw MathError("matrix_mul arguments must be matrices");
+      auto& lst1 = m1.asList()->elements;
+      auto& lst2 = m2.asList()->elements;
+      size_t rows1 = lst1.size();
+      size_t cols1 = rows1 > 0 ? (lst1[0].isList() ? lst1[0].asList()->elements.size() : 0) : 0;
+      size_t rows2 = lst2.size();
+      size_t cols2 = rows2 > 0 ? (lst2[0].isList() ? lst2[0].asList()->elements.size() : 0) : 0;
+      if (cols1 != rows2) throw MathError("Matrix inner dimensions must agree");
+      auto res = std::make_shared<ListValue>();
+      for (size_t i = 0; i < rows1; i++) {
+          auto newRow = std::make_shared<ListValue>();
+          for (size_t j = 0; j < cols2; j++) {
+              ValuePtr sum = makeFloat(0.0);
+              for (size_t k = 0; k < cols1; k++) {
+                  ValuePtr v1 = lst1[i].asList()->elements[k];
+                  ValuePtr v2 = lst2[k].asList()->elements[j];
+                  ValuePtr prod = this->applyBinaryArith("*", v1, v2, 0);
+                  sum = this->applyBinaryArith("+", sum, prod, 0);
+              }
+              newRow->elements.push_back(sum);
+          }
+          res->elements.push_back(makeList(newRow));
+      }
+      return makeList(res);
+  });
+
+  defNative("matrix_transpose", [](std::vector<ValuePtr> a) -> ValuePtr {
+      if (a.empty() || !a[0].isList()) throw MathError("matrix_transpose requires a matrix");
+      auto& lst = a[0].asList()->elements;
+      size_t rows = lst.size();
+      size_t cols = rows > 0 ? (lst[0].isList() ? lst[0].asList()->elements.size() : 0) : 0;
+      auto res = std::make_shared<ListValue>();
+      for (size_t j = 0; j < cols; j++) {
+          auto newRow = std::make_shared<ListValue>();
+          for (size_t i = 0; i < rows; i++) {
+              newRow->elements.push_back(lst[i].asList()->elements[j]);
+          }
+          res->elements.push_back(makeList(newRow));
+      }
+      return makeList(res);
+  });
+
+  defNative("matrix_scale", [this](std::vector<ValuePtr> a) -> ValuePtr {
+      if (a.size() < 2) throw MathError("matrix_scale requires matrix and scalar");
+      auto m1 = a[0];
+      auto scalar = a[1];
+      if (!m1.isList()) throw MathError("matrix_scale first arg must be matrix");
+      auto& lst1 = m1.asList()->elements;
+      auto res = std::make_shared<ListValue>();
+      for (size_t i = 0; i < lst1.size(); i++) {
+          auto newRow = std::make_shared<ListValue>();
+          if (!lst1[i].isList()) throw MathError("Matrix row must be a list");
+          auto& row1 = lst1[i].asList()->elements;
+          for (size_t j = 0; j < row1.size(); j++) {
+              newRow->elements.push_back(this->applyBinaryArith("*", row1[j], scalar, 0));
+          }
+          res->elements.push_back(makeList(newRow));
+      }
+      return makeList(res);
+  });
+
+  defNative("matrix_eye", [](std::vector<ValuePtr> a) -> ValuePtr {
+      if (a.empty()) throw MathError("matrix_eye requires size");
+      int n = a[0].asInt();
+      auto res = std::make_shared<ListValue>();
+      for (int i = 0; i < n; i++) {
+          auto row = std::make_shared<ListValue>();
+          for (int j = 0; j < n; j++) {
+              row->elements.push_back(i == j ? makeFloat(1.0) : makeFloat(0.0));
+          }
+          res->elements.push_back(makeList(row));
+      }
+      return makeList(res);
+  });
+
+  // Hyperbolic
+  defNative("sinh", [](std::vector<ValuePtr> a) -> ValuePtr {
+      return makeFloat(std::sinh(a.empty() ? 0 : a[0].asFloat()));
+  });
+  defNative("cosh", [](std::vector<ValuePtr> a) -> ValuePtr {
+      return makeFloat(std::cosh(a.empty() ? 0 : a[0].asFloat()));
+  });
+  defNative("tanh", [](std::vector<ValuePtr> a) -> ValuePtr {
+      return makeFloat(std::tanh(a.empty() ? 0 : a[0].asFloat()));
+  });
+  defNative("asinh", [](std::vector<ValuePtr> a) -> ValuePtr {
+      return makeFloat(std::asinh(a.empty() ? 0 : a[0].asFloat()));
+  });
+  defNative("acosh", [](std::vector<ValuePtr> a) -> ValuePtr {
+      return makeFloat(std::acosh(a.empty() ? 1 : a[0].asFloat()));
+  });
+  defNative("atanh", [](std::vector<ValuePtr> a) -> ValuePtr {
+      return makeFloat(std::atanh(a.empty() ? 0 : a[0].asFloat()));
+  });
+
+  // Exponential/Power
+  defNative("exp", [](std::vector<ValuePtr> a) -> ValuePtr {
+      return makeFloat(std::exp(a.empty() ? 0 : a[0].asFloat()));
+  });
+  defNative("cbrt", [](std::vector<ValuePtr> a) -> ValuePtr {
+      return makeFloat(std::cbrt(a.empty() ? 0 : a[0].asFloat()));
+  });
+  defNative("hypot", [](std::vector<ValuePtr> a) -> ValuePtr {
+      return makeFloat(std::hypot(a.size() < 1 ? 0 : a[0].asFloat(), a.size() < 2 ? 0 : a[1].asFloat()));
+  });
+
+  // Special functions
+  defNative("erf", [](std::vector<ValuePtr> a) -> ValuePtr {
+      return makeFloat(std::erf(a.empty() ? 0 : a[0].asFloat()));
+  });
+  defNative("erfc", [](std::vector<ValuePtr> a) -> ValuePtr {
+      return makeFloat(std::erfc(a.empty() ? 0 : a[0].asFloat()));
+  });
+  defNative("tgamma", [](std::vector<ValuePtr> a) -> ValuePtr {
+      return makeFloat(std::tgamma(a.empty() ? 0 : a[0].asFloat()));
+  });
+  defNative("lgamma", [](std::vector<ValuePtr> a) -> ValuePtr {
+      return makeFloat(std::lgamma(a.empty() ? 0 : a[0].asFloat()));
+  });
+
+  // Complex functions
+  defNative("complex", [](std::vector<ValuePtr> a) -> ValuePtr {
+      double r = a.empty() ? 0 : a[0].asFloat();
+      double i = a.size() < 2 ? 0 : a[1].asFloat();
+      return makeComplex(std::complex<double>(r, i));
+  });
+  defNative("real", [](std::vector<ValuePtr> a) -> ValuePtr {
+      if (a.empty()) return makeFloat(0);
+      if (a[0].isComplex()) return makeFloat(a[0].asComplex().real());
+      return makeFloat(a[0].asFloat());
+  });
+  defNative("imag", [](std::vector<ValuePtr> a) -> ValuePtr {
+      if (a.empty()) return makeFloat(0);
+      if (a[0].isComplex()) return makeFloat(a[0].asComplex().imag());
+      return makeFloat(0);
+  });
+  defNative("conj", [](std::vector<ValuePtr> a) -> ValuePtr {
+      if (a.empty()) return makeNull();
+      if (a[0].isComplex()) return makeComplex(std::conj(a[0].asComplex()));
+      return a[0];
+  });
+  defNative("arg", [](std::vector<ValuePtr> a) -> ValuePtr {
+      if (a.empty()) return makeFloat(0);
+      return makeFloat(std::arg(a[0].asComplex()));
   });
 
   // exit
@@ -2122,6 +2358,14 @@ void Interpreter::registerBuiltins() {
   builtins->set("INF", makeFloat(std::numeric_limits<double>::infinity()));
   builtins->set("NEG_INF", makeFloat(-std::numeric_limits<double>::infinity()));
   builtins->set("NAN", makeFloat(std::numeric_limits<double>::quiet_NaN()));
+
+  // Scientific Constants
+  builtins->set("SC_C", makeFloat(299792458.0));        // Speed of light (m/s)
+  builtins->set("SC_G", makeFloat(6.67430e-11));      // Gravitational constant (m^3/kg/s^2)
+  builtins->set("SC_H", makeFloat(6.62607015e-34));   // Planck constant (J*s)
+  builtins->set("SC_K", makeFloat(1.380649e-23));     // Boltzmann constant (J/K)
+  builtins->set("SC_NA", makeFloat(6.02214076e23));    // Avogadro number (1/mol)
+  builtins->set("SC_R", makeFloat(8.314462618));      // Gas constant (J/mol/K)
 
   builtins->set("SECOND", makeInt(1));
   builtins->set("MINUTE", makeInt(60));

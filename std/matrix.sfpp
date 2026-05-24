@@ -1,0 +1,10 @@
+// std/matrix.sfpp
+export this as std/matrix;
+
+// Matrix operations
+
+expose "matrix_add" as m_Add;
+expose "matrix_mul" as m_Mul;
+expose "matrix_transpose" as m_Transpose;
+expose "matrix_scale" as m_Scale;
+expose "matrix_eye" as m_Eye;

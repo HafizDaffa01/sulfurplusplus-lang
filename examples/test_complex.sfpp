@@ -1,0 +1,17 @@
+import std/io as io;
+import std/math as math;
+
+var c1 = math.complex(3, 4);   // 3 + 4i
+var c2 = math.complex(1, -2);  // 1 - 2i
+
+io.Terminal.Out << "c1 = " << c1 << io.Terminal.EOL;
+io.Terminal.Out << "c2 = " << c2 << io.Terminal.EOL;
+
+// Complex Math
+io.Terminal.Out << "c1 + c2 = " << (c1 + c2) << io.Terminal.EOL;
+io.Terminal.Out << "c1 * c2 = " << (c1 * c2) << io.Terminal.EOL;
+
+// Built-in operations on complex
+io.Terminal.Out << "abs(c1) = " << math.abs(c1) << io.Terminal.EOL;  // Magnitude
+io.Terminal.Out << "sqrt(-1) = " << math.sqrt(-1) << io.Terminal.EOL; // Should yield (0+1i)
+io.Terminal.Out << "sin(c1) = " << math.sin(c1) << io.Terminal.EOL;

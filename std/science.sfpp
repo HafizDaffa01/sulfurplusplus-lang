@@ -1,0 +1,17 @@
+export this as std/science;
+
+// Physical Constants
+expose "SC_C" as C;        // Speed of light (m/s)
+expose "SC_G" as G;        // Gravitational constant (m^3/kg/s^2)
+expose "SC_H" as H;        // Planck constant (J*s)
+expose "SC_K" as K;        // Boltzmann constant (J/K)
+expose "SC_NA" as NA;      // Avogadro number (1/mol)
+expose "SC_R" as R;        // Gas constant (J/mol/K)
+
+// Convenience aliases
+let speedOfLight = C;
+let planckConstant = H;
+let gravitationalConstant = G;
+let boltzmannConstant = K;
+let avogadroNumber = NA;
+let gasConstant = R;

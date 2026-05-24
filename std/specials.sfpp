@@ -1,9 +1,0 @@
-// std/specials.sfpp
-export this as std/specials;
-
-// Special operations including matrix and linear algebra
-
-// Matrix functions will be mapped here once implemented natively
-expose "matrix_add" as m_Add;
-expose "matrix_mul" as m_Mul;
-expose "matrix_transpose" as m_Transpose;
