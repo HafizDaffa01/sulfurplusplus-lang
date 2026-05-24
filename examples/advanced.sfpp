@@ -1,0 +1,19 @@
+// advanced.sfpp
+// Demonstrates advanced keywords for library creation and pointer access
+
+// Overwrite an existing native function
+overwrite "oldNative" as newNative;
+
+// Expose a native built-in (Allowed only in std/ directory)
+// expose "nativeAlloc" as memAlloc;
+
+fn pointerExamples() {
+    var myPtr = null;
+    
+    unsafe {
+        // Allow raw memory operations
+        // memAlloc(8);
+    }
+    
+    ptr rawPointer = null; // Defining a pointer explicitly
+}

@@ -1,0 +1,22 @@
+// collections.sfpp
+// Demonstrates collection types and keywords
+
+fn collectionsExample() {
+    // List
+    list myList = [1, 2, 3, 4, 5];
+    
+    // Set
+    set mySet = {1, 2, 3, 3, 4}; // Only unique elements
+    
+    // Dictionary
+    dict myMap = {
+        "name" => "Sulfur",
+        "version" => 1.0
+    };
+    
+    // Matrix
+    matrix mat = [
+        [1, 2],
+        [3, 4]
+    ];
+}

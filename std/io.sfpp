@@ -15,7 +15,8 @@ expose "io_listdir"     as listDir;      // listDir(path) -> list<str>
 expose "io_isdir"       as isDir;        // isDir(path) -> bool
 expose "io_isfile"      as isFile;       // isFile(path) -> bool
 expose "io_mkdir"       as mkdir;        // mkdir(path) -> null
-expose "Terminal"       as Terminal;     // Terminal I/O Stream
+expose "Terminal" as Terminal;     // Terminal I/O Stream
+expose "TIO" as TIO;               // TIO built-in for errors
 
 // TIO helpers (renamed to io_)
 let io_e            = TIO.E;           // error
@@ -28,10 +29,3 @@ let io_withCode     = TIO.withCode;     // (errorDict, code)     -> errorDict
 let io_withHint     = TIO.withHint;     // (errorDict, hint)     -> errorDict
 let io_withContext  = TIO.withContext;  // (errorDict, context)  -> errorDict
 
-expose "io_e" as io_e;
-expose "io_fe" as io_fe;
-expose "io_w" as io_w;
-expose "io_withCategory" as io_withCategory;
-expose "io_withCode" as io_withCode;
-expose "io_withHint" as io_withHint;
-expose "io_withContext" as io_withContext;

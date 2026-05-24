@@ -1,0 +1,12 @@
+// modules.sfpp
+// Demonstrates modules and exporting keywords
+
+// Export an alias or variable
+export myModule;
+
+import std/io as io;
+import std/sys --use=[NOLIBNAME];
+
+fn useModule() {
+    io.Terminal.Out << "Using IO module" << io.Terminal.EOL;
+}

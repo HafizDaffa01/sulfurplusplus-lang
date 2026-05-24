@@ -1,0 +1,40 @@
+// oop.sfpp
+// Demonstrates Object-Oriented Programming keywords
+
+interface Animal {
+    fn speak();
+}
+
+class Dog : Animal {
+    var name;
+    
+    // Constructor
+    +1>init(name) {
+        this.name = name;
+    }
+    
+    fn speak() {
+        // Output "Woof"
+    }
+    
+    // Destructor
+    ~1>cleanup() {
+        // Cleanup resources
+    }
+}
+
+struct Point {
+    var x;
+    var y;
+}
+
+fn main() {
+    // Using 'new'
+    var myDog = new Dog("Buddy");
+    myDog.speak();
+    
+    // Using 'delete' to free resources explicitly if supported
+    delete myDog;
+    
+    var p = Point { x: 10, y: 20 };
+}

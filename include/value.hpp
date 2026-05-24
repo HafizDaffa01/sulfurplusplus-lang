@@ -21,6 +21,7 @@ struct FunctionValue {
     std::shared_ptr<Environment> closure;
     bool isNative = false;
     std::function<ValuePtr(std::vector<ValuePtr>)> native;
+    std::string definedInFile;
 };
 
 struct ClassDef {

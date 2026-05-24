@@ -118,4 +118,10 @@ private:
 
     // Kept-alive ASTs for imported modules
     std::vector<std::vector<StmtPtr>> moduleASTs_;
+
+    // Simulated hardware and memory states
+    std::unordered_map<int64_t, ValuePtr> virtualRAM_;
+    std::unordered_map<int, int> gpioStates_;
+    std::unordered_map<int, int> gpioModes_;
+    int64_t nextAddress_ = 0x1000;
 };

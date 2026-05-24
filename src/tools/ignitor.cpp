@@ -14,6 +14,8 @@ void printHelp() {
               << "Commands:\n"
               << "  init           Initialize a new Sulfur++ embedded project\n"
               << "  flash          Flash the binary from the 'flash/' directory to the target\n"
+              << "                 Options:\n"
+              << "                 --bin  Save binary only, bypass flashing to target\n"
               << "  help, -h       Show this help message\n";
 }
 
@@ -62,6 +64,13 @@ int main(int argc, char* argv[]) {
 
         std::cout << "Ignitor initialized successfully." << std::endl;
     } else if (command == "flash") {
+        bool saveBinOnly = false;
+        for (int i = 2; i < argc; ++i) {
+            if (std::string(argv[i]) == "--bin") {
+                saveBinOnly = true;
+            }
+        }
+
         std::cout << "Preparing to flash..." << std::endl;
         
         if (!fs::exists("flash") || !fs::is_directory("flash")) {
@@ -75,8 +84,12 @@ int main(int argc, char* argv[]) {
             if (entry.is_regular_file()) {
                 std::cout << "Found binary: " << entry.path().filename() << std::endl;
                 found = true;
-                // Here you would add the actual call to the hardware flasher (e.g., esptool or avrdude)
-                std::cout << "Calling flash utility for: " << entry.path() << "..." << std::endl;
+                if (saveBinOnly) {
+                    std::cout << "Binary saved at: " << entry.path() << " (bypassing flash to target due to --bin flag)" << std::endl;
+                } else {
+                    // Here you would add the actual call to the hardware flasher (e.g., esptool or avrdude)
+                    std::cout << "Calling flash utility for: " << entry.path() << "..." << std::endl;
+                }
             }
         }
 
@@ -85,7 +98,11 @@ int main(int argc, char* argv[]) {
             return 1;
         }
 
-        std::cout << "Flashing completed successfully." << std::endl;
+        if (saveBinOnly) {
+            std::cout << "Binary preservation completed successfully." << std::endl;
+        } else {
+            std::cout << "Flashing completed successfully." << std::endl;
+        }
     } else {
         std::cerr << "Unknown command: " << command << "\n\n";
         printHelp();

@@ -1,0 +1,16 @@
+// functions.sfpp
+// Demonstrates function-related keywords
+
+fn add(a, b) {
+    return a + b;
+}
+
+fn greet(name) {
+    import std/io --use=[NOLIBNAME];
+    Terminal.Out << "Hello, " << name << Terminal.EOL;
+}
+
+fn main() {
+    var result = add(5, 10);
+    greet("Developer");
+}

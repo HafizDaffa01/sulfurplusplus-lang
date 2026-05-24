@@ -198,6 +198,7 @@ void Interpreter::execFnDecl(const FnDeclStmt &s) {
   fn->retType = s.retType;
   fn->body = s.body.get();
   fn->closure = currentEnv_;
+  fn->definedInFile = currentFile();
   currentEnv_->define(s.name, makeFn(fn), true);
 }
 
@@ -218,6 +219,7 @@ void Interpreter::execClassDecl(const ClassDeclStmt &s) {
       fv->retType = fn->retType;
       fv->body = fn->body.get();
       fv->closure = def->methods;
+      fv->definedInFile = currentFile();
       def->methods->define(fn->name, makeFn(fv), true);
     } else if (auto *vd = std::get_if<VarDeclStmt>(&m->data)) {
       ValuePtr init = makeNull();
@@ -1256,6 +1258,17 @@ ValuePtr Interpreter::callFunction(std::shared_ptr<FunctionValue> fn,
   if (!fn->body)
     throw RuntimeError("Function '" + fn->name + "' has no body", line);
 
+  struct FileStackGuard {
+    std::vector<std::string>& stack;
+    bool pushed;
+    FileStackGuard(std::vector<std::string>& s, const std::string& file) : stack(s), pushed(!file.empty()) {
+      if (pushed) stack.push_back(file);
+    }
+    ~FileStackGuard() {
+      if (pushed) stack.pop_back();
+    }
+  } guard(fileStack_, fn->definedInFile);
+
   auto callEnv = std::make_shared<Environment>(fn->closure);
   for (size_t i = 0; i < fn->params.size(); i++) {
     auto &[pname, ptype] = fn->params[i];
@@ -1290,6 +1303,18 @@ ValuePtr Interpreter::callMethod(std::shared_ptr<ClassInstance> inst,
   if (!mv.isFn())
     throw RuntimeError("'" + name + "' is not a method", line);
   auto fn = mv.asFn();
+
+  struct FileStackGuard {
+    std::vector<std::string>& stack;
+    bool pushed;
+    FileStackGuard(std::vector<std::string>& s, const std::string& file) : stack(s), pushed(!file.empty()) {
+      if (pushed) stack.push_back(file);
+    }
+    ~FileStackGuard() {
+      if (pushed) stack.pop_back();
+    }
+  } guard(fileStack_, fn->definedInFile);
+
   // Add 'self' to closure
   auto callEnv = std::make_shared<Environment>(fn->closure);
   callEnv->define("self", makeClassInst(inst), false);
@@ -2507,6 +2532,23 @@ void Interpreter::registerBuiltins() {
     return makeMatrix(res, allInts);
   });
 
+  defNative("matrix_transpose", [parseMatrix, isMatrixAllInts, makeMatrix](std::vector<ValuePtr> args) -> ValuePtr {
+    if (args.empty()) {
+      throw TypeError("matrix_transpose expects exactly 1 argument");
+    }
+    auto m = parseMatrix(args[0]);
+    size_t rows = m.size();
+    size_t cols = m[0].size();
+    std::vector<std::vector<double>> res(cols, std::vector<double>(rows));
+    for (size_t i = 0; i < rows; ++i) {
+      for (size_t j = 0; j < cols; ++j) {
+        res[j][i] = m[i][j];
+      }
+    }
+    bool allInts = isMatrixAllInts(args[0]);
+    return makeMatrix(res, allInts);
+  });
+
   // --- String Native Builtins ---
   defNative("str_trim", [this](std::vector<ValuePtr> args) -> ValuePtr {
     if (args.empty()) return makeStr("");
@@ -2940,6 +2982,20 @@ void Interpreter::registerBuiltins() {
   });
 
   // Native FFI simulation
+  auto getAddress = [](ValuePtr val) -> int64_t {
+    if (val->isInt()) return val->asInt();
+    std::string s = val->toString();
+    if (s.rfind("0x", 0) == 0) {
+      try {
+        return std::stoll(s.substr(2), nullptr, 16);
+      } catch (...) {}
+    }
+    try {
+      return std::stoll(s);
+    } catch (...) {}
+    return 0;
+  };
+
   defNative("sys_wifi_connect", [](std::vector<ValuePtr> args) -> ValuePtr {
     if (args.size() < 2) return makeBool(false);
     std::string ssid = args[0]->toString();
@@ -2949,26 +3005,71 @@ void Interpreter::registerBuiltins() {
     return makeBool(success);
   });
   
-  defNative("sys_memory_alloc", [](std::vector<ValuePtr> args) -> ValuePtr {
-    return makeStr("0xDEADBEEF");
+  defNative("sys_memory_alloc", [this](std::vector<ValuePtr> args) -> ValuePtr {
+    int64_t size = 8;
+    if (!args.empty() && args[0]->isInt()) {
+      size = args[0]->asInt();
+    }
+    int64_t addr = nextAddress_;
+    nextAddress_ += size;
+    char hex[32];
+    snprintf(hex, sizeof(hex), "0x%llX", (unsigned long long)addr);
+    virtualRAM_[addr] = makeNull();
+    return makeStr(hex);
   });
-  defNative("sys_memory_free", [](std::vector<ValuePtr> args) -> ValuePtr {
+  defNative("sys_memory_free", [this, getAddress](std::vector<ValuePtr> args) -> ValuePtr {
+    if (args.empty()) return makeBool(false);
+    try {
+      int64_t addr = getAddress(args[0]);
+      virtualRAM_.erase(addr);
+      return makeBool(true);
+    } catch (...) {
+      return makeBool(false);
+    }
+  });
+  defNative("sys_memory_read", [this, getAddress](std::vector<ValuePtr> args) -> ValuePtr {
+    if (args.empty()) return makeNull();
+    try {
+      int64_t addr = getAddress(args[0]);
+      auto it = virtualRAM_.find(addr);
+      if (it != virtualRAM_.end()) {
+        return it->second;
+      }
+    } catch (...) {}
+    return makeNull();
+  });
+  defNative("sys_memory_write", [this, getAddress](std::vector<ValuePtr> args) -> ValuePtr {
+    if (args.size() < 2) return makeBool(false);
+    try {
+      int64_t addr = getAddress(args[0]);
+      virtualRAM_[addr] = args[1];
+      return makeBool(true);
+    } catch (...) {
+      return makeBool(false);
+    }
+  });
+  defNative("iot_gpio_mode", [this](std::vector<ValuePtr> args) -> ValuePtr {
+    if (args.size() < 2) return makeBool(false);
+    int pin = (int)args[0]->asInt();
+    int mode = (int)args[1]->asInt();
+    gpioModes_[pin] = mode;
     return makeBool(true);
   });
-  defNative("sys_memory_read", [](std::vector<ValuePtr> args) -> ValuePtr {
-    return makeInt(42);
-  });
-  defNative("sys_memory_write", [](std::vector<ValuePtr> args) -> ValuePtr {
+  defNative("iot_gpio_write", [this](std::vector<ValuePtr> args) -> ValuePtr {
+    if (args.size() < 2) return makeBool(false);
+    int pin = (int)args[0]->asInt();
+    int value = (int)args[1]->asInt();
+    gpioStates_[pin] = value;
     return makeBool(true);
   });
-  defNative("iot_gpio_mode", [](std::vector<ValuePtr> args) -> ValuePtr {
-    return makeBool(true);
-  });
-  defNative("iot_gpio_write", [](std::vector<ValuePtr> args) -> ValuePtr {
-    return makeBool(true);
-  });
-  defNative("iot_gpio_read", [](std::vector<ValuePtr> args) -> ValuePtr {
-    return makeInt(1);
+  defNative("iot_gpio_read", [this](std::vector<ValuePtr> args) -> ValuePtr {
+    if (args.empty()) return makeInt(0);
+    int pin = (int)args[0]->asInt();
+    auto it = gpioStates_.find(pin);
+    if (it != gpioStates_.end()) {
+      return makeInt(it->second);
+    }
+    return makeInt(0);
   });
   defNative("sys_process_exec", [](std::vector<ValuePtr> args) -> ValuePtr {
     if (args.empty()) return makeStr("");

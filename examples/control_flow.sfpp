@@ -1,0 +1,33 @@
+// control_flow.sfpp
+// Demonstrates control flow keywords
+
+fn checkAge(age) {
+    if (age >= 18) {
+        return "Adult";
+    } else {
+        return "Minor";
+    }
+}
+
+fn loopExample() {
+    var count = 0;
+    
+    while (count < 10) {
+        if (count == 5) {
+            count += 1;
+            continue; // Skip 5
+        }
+        
+        if (count == 8) {
+            break; // Stop at 8
+        }
+        
+        count += 1;
+    }
+    
+    // For-in loop over a list
+    var items = [1, 2, 3];
+    for val in items {
+        // do something with val
+    }
+}
