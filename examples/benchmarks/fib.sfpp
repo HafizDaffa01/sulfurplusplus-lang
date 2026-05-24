@@ -1,24 +1,14 @@
-// Sulfur++ Benchmark
-// Based on available std: io.sfpp and others.
-
-import std/builtin --use=[NOLIBNAME];
+import std/io as io;
+import std/time as time;
 
 fn fib(n) {
-    var a = 0;
-    var b = 1;
-    var i = 0;
-    while (i < n) {
-        var temp = a;
-        a = b;
-        b = temp + b;
-        i = i + 1;
-    }
-    return a;
+    if (n < 2) { return n; }
+    return fib(n - 1) + fib(n - 2);
 }
 
-var start = now();
-var result = fib(50);
-var end = now();
+var start = time.micros();
+var result = fib(32);
+var end = time.micros();
 
-Terminal.Out << "Fibonacci(50) = " << result << Terminal.EOL;
-Terminal.Out << "Time taken: " << (end - start) / 1000000.0 << " seconds" << Terminal.EOL;
+io.Terminal.Out << "Fibonacci(32) = " << result << io.Terminal.EOL;
+io.Terminal.Out << "Time taken: " << (end - start) / 1000000.0 << " seconds" << io.Terminal.EOL;

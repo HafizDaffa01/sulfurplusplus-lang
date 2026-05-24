@@ -1,16 +1,13 @@
 const { performance } = require('perf_hooks');
 
 function fib(n) {
-    let a = 0n, b = 1n;
-    for (let i = 0; i < n; i++) {
-        [a, b] = [b, a + b];
-    }
-    return a;
+    if (n < 2) return n;
+    return fib(n-1) + fib(n-2);
 }
 
 const start = performance.now();
-const result = fib(50);
+const result = fib(32);
 const end = performance.now();
 
-console.log(`Fibonacci(50) = ${result}`);
+console.log(`Fibonacci(32) = ${result}`);
 console.log(`Time taken: ${(end - start) / 1000} seconds`);

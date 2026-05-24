@@ -1,14 +1,12 @@
 import time
 
 def fib(n):
-    a, b = 0, 1
-    for _ in range(n):
-        a, b = b, a + b
-    return a
+    if n < 2: return n
+    return fib(n-1) + fib(n-2)
 
 start = time.time()
-result = fib(50)
+result = fib(32)
 end = time.time()
 
-print(f"Fibonacci(50) = {result}")
+print(f"Fibonacci(32) = {result}")
 print(f"Time taken: {end - start:.6f} seconds")

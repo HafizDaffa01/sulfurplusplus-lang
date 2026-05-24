@@ -1,14 +1,11 @@
 function fib(n)
-    local a, b = 0, 1
-    for i = 1, n do
-        a, b = b, a + b
-    end
-    return a
+    if n < 2 then return n end
+    return fib(n-1) + fib(n-2)
 end
 
 local start = os.clock()
-local result = fib(50)
+local result = fib(32)
 local end_time = os.clock()
 
-print("Fibonacci(50) = " .. result)
+print("Fibonacci(32) = " .. result)
 print("Time taken: " .. (end_time - start) .. " seconds")
