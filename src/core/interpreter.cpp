@@ -434,26 +434,52 @@ void Interpreter::execImport(const ImportStmt &s) {
   }
 
   // Try direct path first, then packages/ directory
+    // Try direct path first
   std::ifstream f(path);
   if (!f) {
-    // Try packages/<pkg>.sfpp
-    std::string pkgPath = "packages/" + path;
-    f.open(pkgPath);
-    if (f) {
-      path = pkgPath;
-    } else {
-      // Try packages/<user>/<repo>.sfpp for @user/repo style
-      std::string stripped = s.pkg;
-      if (!stripped.empty() && stripped[0] == '@') stripped = stripped.substr(1);
-      std::string altPath = "packages/" + stripped + ".sfpp";
-      f.open(altPath);
+    // Cek apakah package diawali dengan "std/"
+    bool isStdModule = (s.pkg.rfind("std/", 0) == 0);
+
+    if (isStdModule) {
+      // 1. Coba cari di folder std yang berada satu tingkat/folder dengan binary 'combust'
+      // (Ini bekerja untuk skenario ./build/combust karena std/ dicopy ke build/std/)
+      std::string exeDirStdPath = "build/" + path; // Mengarah ke build/std/...
+      
+      f.open(exeDirStdPath);
       if (f) {
-        path = altPath;
+        path = exeDirStdPath;
       } else {
-        throw RuntimeError("Cannot open module '" + s.pkg + "'. Tried: " + path + ", packages/" + path + ", " + altPath, s.line);
+        // 2. Fallback: Coba cari di folder development asli (src/std/...)
+        std::string srcStdPath = "src/" + path; // Mengarah ke src/std/...
+        f.open(srcStdPath);
+        if (f) {
+          path = srcStdPath;
+        } else {
+          // Jika keduanya gagal, baru lempar error
+          throw RuntimeError("Cannot open standard module '" + s.pkg + "' at " + path);
+        }
+      }
+    } else {
+      // --- LOGIKA LAMA UNTUK PACKAGES/ NON-STD ---
+      std::string pkgPath = "packages/" + path;
+      f.open(pkgPath);
+      if (f) {
+        path = pkgPath;
+      } else {
+        std::string stripped = s.pkg;
+        if (!stripped.empty() && stripped[0] == '@') stripped = s.pkg.substr(1);
+        std::string altPath = "packages/" + stripped + ".sfpp";
+        f.open(altPath);
+        if (f) {
+          path = altPath;
+        } else {
+          throw RuntimeError("Cannot open module '" + s.pkg + "'.");
+        }
       }
     }
   }
+
+
 
   std::ostringstream ss;
   ss << f.rdbuf();

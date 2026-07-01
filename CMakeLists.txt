@@ -23,10 +23,20 @@ set(COMBUST_SOURCES
     src/core/interpreter.cpp
     src/core/environment.cpp
     src/core/value.cpp
+ 
 )
 
 # Define the combust executable target
 add_executable(combust ${COMBUST_SOURCES})
+
+# Menyalin folder src/std ke folder build agar berada di parent yang sama dengan combust
+add_custom_command(TARGET combust POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy_directory
+            ${CMAKE_CURRENT_SOURCE_DIR}/src/std
+            $<TARGET_FILE_DIR:combust>/std
+    COMMENT "Menyalin standard library Sulfur++ (.sfpp) ke folder build..."
+)
+
 
 # Define the fuse package manager executable target
 add_executable(fuse src/tools/fuse.cpp)
