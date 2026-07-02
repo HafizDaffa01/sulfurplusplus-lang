@@ -12,7 +12,8 @@ if(MSVC)
     # Enable standards-conforming preprocessor and structured bindings in MSVC
     add_compile_options(/Zc:__cplusplus /Zc:preprocessor)
 else()
-    add_compile_options(-Wall -Wextra -Wpedantic -O2)
+    add_compile_options(-Wall -Wextra -Wpedantic -O3 -flto)
+    add_link_options(-flto)
 endif()
 
 # Explicitly list source files for combust to avoid including fuse.cpp
@@ -29,10 +30,10 @@ set(COMBUST_SOURCES
 # Define the combust executable target
 add_executable(combust ${COMBUST_SOURCES})
 
-# Menyalin folder src/std ke folder build agar berada di parent yang sama dengan combust
+# Menyalin folder src/stdlib ke folder build agar berada di parent yang sama dengan combust
 add_custom_command(TARGET combust POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E copy_directory
-            ${CMAKE_CURRENT_SOURCE_DIR}/src/std
+            ${CMAKE_CURRENT_SOURCE_DIR}/src/stdlib
             $<TARGET_FILE_DIR:combust>/std
     COMMENT "Menyalin standard library Sulfur++ (.sfpp) ke folder build..."
 )

@@ -7,29 +7,18 @@
 // ----------------------------------------------------------------
 
 ValuePtr DictValue::get(const std::string &key) const {
-  for (auto &p : pairs) {
-    if (p.first.isStr() && p.first.asStr() == key)
-      return p.second;
-  }
+  auto it = pairs.find(key);
+  if (it != pairs.end())
+    return it->second;
   return makeNull();
 }
 
 bool DictValue::has(const std::string &key) const {
-  for (auto &p : pairs) {
-    if (p.first.isStr() && p.first.asStr() == key)
-      return true;
-  }
-  return false;
+  return pairs.find(key) != pairs.end();
 }
 
 void DictValue::set(const std::string &key, ValuePtr val) {
-  for (auto &p : pairs) {
-    if (p.first.isStr() && p.first.asStr() == key) {
-      p.second = val;
-      return;
-    }
-  }
-  pairs.push_back({makeStr(key), val});
+  pairs[key] = val;
 }
 
 // --- Value accessors
@@ -250,12 +239,14 @@ std::string Value::toString() const {
           if (!v)
             return "{}";
           std::string s = "{";
-          for (size_t i = 0; i < v->pairs.size(); i++) {
-            if (i)
+          bool first = true;
+          for (const auto &kv : v->pairs) {
+            if (!first)
               s += ", ";
-            s += v->pairs[i].first.toString();
+            first = false;
+            s += kv.first;
             s += ": ";
-            s += v->pairs[i].second.toString();
+            s += kv.second.toString();
           }
           return s + "}";
         }

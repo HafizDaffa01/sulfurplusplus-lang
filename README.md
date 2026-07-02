@@ -1,6 +1,6 @@
 # Sulfur++ Language
+A high-performance, C++-backed scripting language for desktop, embedded, and IoT applications. Features dynamic typing, native system access, a rich standard library, and modern syntax.
 
-Sulfur++ is a high-performance, C++-backed scripting language designed for both desktop applications and embedded/IoT systems. It provides robust system access, memory management, and a rich standard library tailored for general-purpose programming, hardware interaction, and scientific computing.
 
 ## "Write Easy, Perform Fast"
 

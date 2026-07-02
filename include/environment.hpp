@@ -26,13 +26,9 @@ public:
 
     std::shared_ptr<Environment> parent() const { return parent_; }
 
-    struct Entry {
-        std::string name;
-        VarEntry var;
-    };
-    std::vector<Entry>& vars() { return vars_; }
+    std::unordered_map<std::string, VarEntry>& vars() { return vars_; }
 
 private:
     std::shared_ptr<Environment> parent_;
-    std::vector<Entry> vars_;
+    std::unordered_map<std::string, VarEntry> vars_;
 };

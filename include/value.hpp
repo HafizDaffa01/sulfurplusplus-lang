@@ -3,6 +3,7 @@
 #include <vector>
 #include <map>
 #include <set>
+#include <unordered_map>
 #include <memory>
 #include <variant>
 #include <functional>
@@ -58,7 +59,7 @@ struct SetValue {
 };
 
 struct DictValue {
-    std::vector<std::pair<ValuePtr, ValuePtr>> pairs;
+    std::unordered_map<std::string, ValuePtr> pairs;
 
     ValuePtr get(const std::string& key) const;
     void set(const std::string& key, ValuePtr val);

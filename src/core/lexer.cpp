@@ -7,7 +7,7 @@ static const std::unordered_map<std::string, TokenType> KEYWORDS = {
     {"let",       TokenType::LET},
     {"var",       TokenType::VAR},
     {"auto",      TokenType::AUTO},
-    {"dyn",       TokenType::DYN},
+    // {"dyn",       TokenType::DYN}, // removed dynamic keyword, using auto for dynamic typing
     {"fn",        TokenType::FN},
     {"return",    TokenType::RETURN},
     {"class",     TokenType::CLASS},

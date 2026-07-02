@@ -57,11 +57,7 @@ void Interpreter::run(const std::vector<StmtPtr> &stmts, const std::string& file
 void Interpreter::injectBuiltinsIntoGlobal() {
     if (!builtinsRegistry_.isNull() && builtinsRegistry_.isDict()) {
         for (const auto& kv : builtinsRegistry_.asDict()->pairs) {
-            if (kv.first.isStr()) {
-                globalEnv_->define(kv.first.asStr(), kv.second, false);
-            } else {
-                globalEnv_->define(kv.first.toString(), kv.second, false);
-            }
+            globalEnv_->define(kv.first, kv.second, false);
         }
     }
 }
@@ -82,6 +78,8 @@ void Interpreter::trace(const std::string &msg) {
   if (debugMode_)
     *stderr_ << "[TRACE] " << msg << "\n";
 }
+
+#define trace(msg) do { if (debugMode_) { this->trace(msg); } } while(0)
 
 // --- Output helpers
 // -----------------------------------------------------------
@@ -312,7 +310,7 @@ void Interpreter::execFor(const ForStmt &s) {
         break;
   } else if (iterable.isDict()) {
     for (auto &[k, v] : iterable.asDict()->pairs)
-      if (!doBody(k))
+      if (!doBody(makeStr(k)))
         break;
   } else if (iterable.isSet()) {
     for (auto &elem : iterable.asSet()->elements)
@@ -344,13 +342,11 @@ void Interpreter::execThrow(const ThrowStmt &s) {
       std::string severity = "E";
 
       for (const auto& kv : dict->pairs) {
-          if (kv.first.isStr()) {
-              std::string key = kv.first.asStr();
-              if (key == "message") msg = kv.second.isStr() ? kv.second.asStr() : kv.second.toString();
-              else if (key == "code") code = kv.second.isStr() ? kv.second.asStr() : kv.second.toString();
-              else if (key == "hint") hint = kv.second.isStr() ? kv.second.asStr() : kv.second.toString();
-              else if (key == "severity") severity = kv.second.isStr() ? kv.second.asStr() : kv.second.toString();
-          }
+          std::string key = kv.first;
+          if (key == "message") msg = kv.second.isStr() ? kv.second.asStr() : kv.second.toString();
+          else if (key == "code") code = kv.second.isStr() ? kv.second.asStr() : kv.second.toString();
+          else if (key == "hint") hint = kv.second.isStr() ? kv.second.asStr() : kv.second.toString();
+          else if (key == "severity") severity = kv.second.isStr() ? kv.second.asStr() : kv.second.toString();
       }
       
       if (code.find(severity + "_") != 0) {
@@ -389,14 +385,11 @@ void Interpreter::execImport(const ImportStmt &s) {
       alias = s.pkg.substr(slash + 1);
     } else {
       alias = s.pkg;
-      // strip leading @ if present
-      if (!alias.empty() && alias[0] == '@') alias = alias.substr(1);
+      // @ handling removed
     }
   }
 
-  // Normalize pkg key: strip leading @ for module cache lookup
   std::string pkgKey = s.pkg;
-  if (!pkgKey.empty() && pkgKey[0] == '@') pkgKey = pkgKey.substr(1);
 
   bool noLibName = false;
   for (const auto& flag : s.flags) {
@@ -408,9 +401,9 @@ void Interpreter::execImport(const ImportStmt &s) {
   auto defineModuleExports = [&](ValuePtr dictVal) {
       if (noLibName) {
           if (dictVal.isDict()) {
-              for (const auto& kv : dictVal.asDict()->pairs) {
-                  currentEnv_->define(kv.first.toString(), kv.second, true);
-              }
+               for (const auto& [k, v] : dictVal.asDict()->pairs) {
+                   currentEnv_->define(k, v, true);
+               }
           }
       } else {
           currentEnv_->define(alias, dictVal, true);
@@ -441,7 +434,7 @@ void Interpreter::execImport(const ImportStmt &s) {
     bool isStdModule = (s.pkg.rfind("std/", 0) == 0);
 
     if (isStdModule) {
-      // 1. Coba cari di folder std yang berada satu tingkat/folder dengan binary 'combust'
+      // 1. Coba cari di folder stdlib yang berada satu tingkat/folder dengan binary 'combust'
       // (Ini bekerja untuk skenario ./build/combust karena std/ dicopy ke build/std/)
       std::string exeDirStdPath = "build/" + path; // Mengarah ke build/std/...
       
@@ -449,8 +442,8 @@ void Interpreter::execImport(const ImportStmt &s) {
       if (f) {
         path = exeDirStdPath;
       } else {
-        // 2. Fallback: Coba cari di folder development asli (src/std/...)
-        std::string srcStdPath = "src/" + path; // Mengarah ke src/std/...
+        // 2. Fallback: Coba cari di folder development asli (src/stdlib/...)
+        std::string srcStdPath = "src/stdlib/" + path; // Mengarah ke src/stdlib/...
         f.open(srcStdPath);
         if (f) {
           path = srcStdPath;
@@ -519,8 +512,8 @@ void Interpreter::execImport(const ImportStmt &s) {
 
   auto ns = std::make_shared<DictValue>();
   for (const auto& kv : moduleEnv->vars()) {
-    if (kv.name != "__export_alias__") {
-      ns->set(kv.name, kv.var.value);
+    if (kv.first != "__export_alias__") {
+      ns->set(kv.first, kv.second.value);
     }
   }
 
@@ -1891,7 +1884,7 @@ ValuePtr Interpreter::callBuiltinMethod(ValuePtr obj, const std::string &method,
     if (method == "keys") {
       auto lv = std::make_shared<ListValue>();
       for (auto &[k, v] : dv->pairs)
-        lv->elements.push_back(k);
+        lv->elements.push_back(makeStr(k));
       return makeList(lv);
     }
     if (method == "values") {
@@ -1908,12 +1901,7 @@ ValuePtr Interpreter::callBuiltinMethod(ValuePtr obj, const std::string &method,
     if (method == "remove") {
       if (!args.empty()) {
         auto key = args[0]->toString();
-        dv->pairs.erase(std::remove_if(dv->pairs.begin(), dv->pairs.end(),
-                                       [&](auto &p) {
-                                         return p.first->isStr() &&
-                                                p.first->asStr() == key;
-                                       }),
-                        dv->pairs.end());
+        dv->pairs.erase(key);
       }
       return makeNull();
     }
@@ -2588,7 +2576,7 @@ void Interpreter::registerBuiltins() {
                   auto lv = std::make_shared<ListValue>();
                   for (auto& kv : target->asDict()->pairs) {
                       auto pair = std::make_shared<ListValue>();
-                      pair->elements.push_back(kv.first);
+                      pair->elements.push_back(makeStr(kv.first));
                       pair->elements.push_back(kv.second);
                       lv->elements.push_back(makeList(pair));
                   }
@@ -2610,8 +2598,8 @@ void Interpreter::registerBuiltins() {
                   auto inst = target->asClassInst();
                   for (auto& kv : inst->members->vars()) {
                       auto pair = std::make_shared<ListValue>();
-                      pair->elements.push_back(makeStr(kv.name));
-                      pair->elements.push_back(kv.var.value);
+                      pair->elements.push_back(makeStr(kv.first));
+                      pair->elements.push_back(kv.second.value);
                       lv->elements.push_back(makeList(pair));
                   }
                   return makeList(lv);
@@ -2633,12 +2621,12 @@ void Interpreter::registerBuiltins() {
               if (target->isClassInst()) {
                   auto inst = target->asClassInst();
                   for (auto& kv : inst->members->vars()) {
-                      lv->elements.push_back(makeStr(kv.name));
+                      lv->elements.push_back(makeStr(kv.first));
                   }
               } else if (target->isClassDef()) {
                   auto def = std::get<std::shared_ptr<ClassDef>>(target->data);
                   for (auto& kv : def->methods->vars()) {
-                      lv->elements.push_back(makeStr(kv.name));
+                      lv->elements.push_back(makeStr(kv.first));
                   }
               } else if (target->isStructInst()) {
                   auto inst = target->asStructInst();
@@ -2652,7 +2640,7 @@ void Interpreter::registerBuiltins() {
                   }
               } else if (target->isDict()) {
                   for (auto& kv : target->asDict()->pairs) {
-                      lv->elements.push_back(kv.first);
+                      lv->elements.push_back(makeStr(kv.first));
                   }
               } else if (target->isStr()) {
                   for (auto& m : {"length", "len", "upper", "lower", "trim", "contains", "startsWith", "endsWith", "split", "replace", "slice", "substr", "toString", "str", "toInt", "toFloat", "repeat", "chars"}) {
@@ -3274,7 +3262,7 @@ void Interpreter::registerBuiltins() {
     auto res = std::make_shared<ListValue>();
     for (auto& kv : args[0]->asDict()->pairs) {
       auto pair = std::make_shared<ListValue>();
-      pair->elements.push_back(kv.first);
+      pair->elements.push_back(makeStr(kv.first));
       pair->elements.push_back(kv.second);
       res->elements.push_back(makeList(pair));
     }
@@ -3285,7 +3273,7 @@ void Interpreter::registerBuiltins() {
     auto res = std::make_shared<DictValue>();
     res->pairs = args[0]->asDict()->pairs;
     for (auto& kv : args[1]->asDict()->pairs) {
-      res->set(kv.first->toString(), kv.second);
+      res->set(kv.first, kv.second);
     }
     return makeDict(res);
   });

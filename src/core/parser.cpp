@@ -71,7 +71,7 @@ std::string Parser::parseType() {
       TokenType::TYPE_FLOAT64, TokenType::TYPE_BOOL,   TokenType::TYPE_CHAR,
       TokenType::TYPE_STR,     TokenType::TYPE_VOID,   TokenType::TYPE_LIST,
       TokenType::TYPE_SET,     TokenType::TYPE_DICT,   TokenType::TYPE_MATRIX,
-      TokenType::DYN,          TokenType::AUTO,        TokenType::IDENT,
+      TokenType::AUTO,        TokenType::IDENT,
   };
 
   std::string type;
@@ -137,8 +137,7 @@ StmtPtr Parser::parseStmt() {
     return parseVarDecl("var");
   if (check(TokenType::AUTO))
     return parseVarDecl("auto");
-  if (check(TokenType::DYN))
-    return parseVarDecl("dyn");
+
   if (check(TokenType::FN))
     return parseFnDecl();
   if (check(TokenType::CLASS))
@@ -285,7 +284,7 @@ StmtPtr Parser::parseClassDecl() {
     }
     // Variable declarations inside class
     if (check(TokenType::LET) || check(TokenType::VAR) ||
-        check(TokenType::AUTO) || check(TokenType::DYN)) {
+        check(TokenType::AUTO)) {
       std::string kw = advance().value;
       members.push_back(parseVarDecl(kw)); // This re-reads... fix
       continue;

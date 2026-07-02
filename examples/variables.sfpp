@@ -10,7 +10,7 @@ let pi = 3.14159;
 
 // Type inference and dynamic types
 auto inferred = 100;
-dyn dynamicVar = "Can be a string";
+auto dynamicVar = "Can be a string"; // using auto for inferred type
 dynamicVar = 42; // Now it's an integer
 
 // Primitive Types explicitly typed

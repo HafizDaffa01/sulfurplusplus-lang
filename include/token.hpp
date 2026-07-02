@@ -9,7 +9,7 @@ enum class TokenType {
     IDENT, CATCH_VAR,
 
     // Keywords
-    LET, VAR, AUTO, DYN,
+    LET, VAR, AUTO,
     FN, RETURN, CLASS, STRUCT, INTERFACE,
     IF, ELSE, WHILE, FOR, IN, BREAK, CONTINUE,
     IMPORT, AS, EXPORT, EXPOSE, OVERWRITE, THIS_KW,
