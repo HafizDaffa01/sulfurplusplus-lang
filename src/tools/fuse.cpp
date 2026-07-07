@@ -163,11 +163,15 @@ static fs::path packagePath(const std::string& user, const std::string& repo) {
     return fs::path("packages") / user / (repo + ".sfpp");
 }
 
-// Download url to dest via PowerShell Invoke-WebRequest
+// Download url to dest via curl (fallback to PowerShell if needed)
 static bool downloadFile(const std::string& url, const fs::path& dest) {
-    std::string cmd = "powershell -Command \"Invoke-WebRequest -Uri '" + url +
-                      "' -OutFile '" + dest.string() + "' -ErrorAction SilentlyContinue\"";
+    // Try curl first
+    std::string cmd = "curl -L -o " + dest.string() + " " + url + " >/dev/null 2>&1";
     int r = std::system(cmd.c_str());
+    if (r == 0 && fs::exists(dest) && fs::file_size(dest) > 0) return true;
+    // Fallback to PowerShell (Windows)
+    std::string pwCmd = "powershell -Command \"Invoke-WebRequest -Uri '" + url + "' -OutFile '" + dest.string() + "' -ErrorAction SilentlyContinue\"";
+    r = std::system(pwCmd.c_str());
     return r == 0 && fs::exists(dest) && fs::file_size(dest) > 0;
 }
 

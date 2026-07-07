@@ -1,0 +1,2 @@
+# Demo script to trigger an undefined identifier error
+var x = unknownVar + 1;

@@ -20,8 +20,10 @@ struct FunctionValue {
     std::vector<std::pair<std::string,std::string>> params;
     std::string retType;
     void* body; // Stmt* (opaque to avoid circular include)
+    void* decl = nullptr; // const FnDeclStmt*
     std::shared_ptr<Environment> closure;
     bool isNative = false;
+    int callCount = 0;
     std::function<ValuePtr(std::vector<ValuePtr>)> native;
     std::string definedInFile;
 };

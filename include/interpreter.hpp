@@ -9,7 +9,7 @@
 
 class Interpreter {
 public:
-    explicit Interpreter(bool debugMode = false);
+    explicit Interpreter(bool debugMode = false, bool forceJIT = false);
 
     void run(const std::vector<StmtPtr>& stmts, const std::string& filepath = "");
     void injectBuiltinsIntoGlobal();
@@ -24,6 +24,7 @@ private:
     // Private registry for native builtins, not exposed globally to users
     ValuePtr builtinsRegistry_;
     bool debugMode_;
+    bool forceJIT_;
     std::ostream* stdout_;
     std::ostream* stderr_;
     std::istream* stdin_;
@@ -37,6 +38,13 @@ private:
 
     // Registry for modules that export themselves
     std::unordered_map<std::string, ValuePtr> exportedModules_;
+
+    // Alias registry: maps alias name -> {paramCount, expansionTemplate}
+    struct AliasEntry {
+        std::vector<std::string> paramNames;
+        std::string expansion; // template with parameter names
+    };
+    std::unordered_map<std::string, AliasEntry> aliasRegistry_;
 
     // Execute statement
     void execStmt(const Stmt& s);

@@ -14,6 +14,10 @@
 #include <csignal>
 #include <cstdlib>
 
+#ifdef ENABLE_LLVM
+#include "../llvm/llvm_aot.hpp"
+#endif
+
 static std::string formatDuration(double ms) {
     double us = ms * 1000.0;
     std::ostringstream oss;
@@ -78,10 +82,10 @@ static void printBanner() {
         << "+-----------------------------------+\n";
 }
 
-static void runREPL(bool debug) {
+static void runREPL(bool debug, bool jit) {
     printBanner();
     std::cerr << "Type 'exit' or Ctrl+C to quit.\n\n";
-    Interpreter interp(debug);
+    Interpreter interp(debug, jit);
     if (debug) {
         std::cerr << "[DEBUG] Initializing Sulfur++ Debug Mode...\n"
                   << "[DEBUG]   File Path: <repl>\n"
@@ -128,8 +132,8 @@ static void runREPL(bool debug) {
     }
 }
 
-static int runFile(const std::string& filename, bool debug, bool watch) {
-    auto runOnce = [&]() -> int {
+static int runFile(const std::string& filename, bool debug, bool watch, bool aot, bool jit) {
+    auto runOnce = [&](const std::string& filename, bool debug, bool watch, bool aot, bool jit) -> int {
         std::string absPath = filename;
         if (filename != "<repl>" && !filename.empty()) {
             try {
@@ -139,7 +143,7 @@ static int runFile(const std::string& filename, bool debug, bool watch) {
         if (debug) {
             std::cerr << "[DEBUG] Initializing Sulfur++ Debug Mode...\n"
                       << "[DEBUG]   File Path: " << absPath << "\n"
-                      << "[DEBUG]   Active Flags: --debug" << (watch ? ", --watch" : "") << "\n"
+                      << "[DEBUG]   Active Flags: --debug" << (watch ? ", --watch" : "") << (jit ? ", --jit" : "") << "\n"
                       << "[DEBUG]   Sulfur++ Version: " << __SULFUR_VERSION__ << "\n"
                       << "[DEBUG]   Combust Version:  " << __COMBUST_VERSION__ << "\n"
                       << "[DEBUG]   Fuse Version:     " << __FUSE_VERSION__ << "\n"
@@ -152,7 +156,21 @@ static int runFile(const std::string& filename, bool debug, bool watch) {
             auto tokens = lex.tokenize();
             Parser par(std::move(tokens));
             auto stmts = par.parse();
-            Interpreter interp(debug);
+
+            if (aot) {
+#ifdef ENABLE_LLVM
+                std::string objPath = filename.substr(0, filename.find_last_of('.')) + ".o";
+                std::cerr << "[combust] AOT Compiling to native object: " << objPath << " ...\n";
+                sulfur_emit_object(stmts, "AOTModule", objPath);
+                std::cerr << "[combust] AOT Compilation complete.\n";
+                return 0;
+#else
+                std::cerr << "\033[31;1mError: combust was built without LLVM support. AOT compilation is not available.\033[0m\n";
+                return 1;
+#endif
+            }
+
+            Interpreter interp(debug, jit);
             interp.run(stmts, absPath);
             if (debug) {
                 auto end = std::chrono::high_resolution_clock::now();
@@ -176,12 +194,12 @@ static int runFile(const std::string& filename, bool debug, bool watch) {
         }
     };
 
-    if (!watch) return runOnce();
+    if (!watch) return runOnce(filename, debug, watch, aot, jit);
 
     // Watch mode
     std::cerr << "[combust] Watching " << filename << " ...\n";
     auto lastWrite = std::filesystem::last_write_time(filename);
-    runOnce();
+    runOnce(filename, debug, watch, aot, jit);
     while (true) {
         std::this_thread::sleep_for(std::chrono::milliseconds(300));
         try {
@@ -189,7 +207,7 @@ static int runFile(const std::string& filename, bool debug, bool watch) {
             if (cur != lastWrite) {
                 lastWrite = cur;
                 std::cerr << "\n[combust] File changed - reloading...\n";
-                runOnce();
+                runOnce(filename, debug, watch, aot, jit);
             }
         } catch (...) {}
     }
@@ -204,12 +222,16 @@ int main(int argc, char* argv[]) {
 
     bool debug = false;
     bool watch = false;
+    bool aot = false;
+    bool jit = false;
     std::string filename;
 
     for (int i = 1; i < argc; i++) {
         std::string arg = argv[i];
         if (arg == "--debug" || arg == "-d") debug = true;
         else if (arg == "--watch" || arg == "-w") watch = true;
+        else if (arg == "--aot" || arg == "-c") aot = true;
+        else if (arg == "--jit" || arg == "-j") jit = true;
         else if (arg == "--version" || arg == "-v") {
             std::cout << "combust " << __COMBUST_VERSION__ << " (Sulfur++ Runtime)\n";
             return 0;
@@ -225,6 +247,8 @@ int main(int argc, char* argv[]) {
                 "OPTIONS:\n"
                 "    -d, --debug      Enable verbose debug tracing and memory tracking\n"
                 "    -w, --watch      Start the runtime in watch mode (auto-reloads on save)\n"
+                "    -c, --aot        Ahead-of-Time (AOT) compile to a native object file (.o)\n"
+                "    -j, --jit        Force Just-In-Time (JIT) compilation for all functions\n"
                 "    -v, --version    Print version information\n"
                 "    -h, --help       Print this help message\n";
             return 0;
@@ -235,9 +259,9 @@ int main(int argc, char* argv[]) {
     }
 
     if (filename.empty()) {
-        runREPL(debug);
+        runREPL(debug, jit);
         return 0;
     }
 
-    return runFile(filename, debug, watch);
+    return runFile(filename, debug, watch, aot, jit);
 }

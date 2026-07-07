@@ -59,11 +59,21 @@ struct FatalError : public SulfurError {
 };
 
 struct NameError : public SulfurError {
+    // Basic constructor – no suggestion
     NameError(const std::string& name, int line = -1)
         : SulfurError("E_NAME_404",
-                      "Undefined identifier: '" + name + "'",
-                      line,
-                      "Check for typos, or ensure '" + name + "' is declared before use.") {}
+                       "Undefined identifier: '" + name + "'",
+                       line,
+                       "Check for typos, or ensure '" + name + "' is declared before use.") {}
+
+    // Overload that accepts a suggestion string
+    NameError(const std::string& name, int line, const std::string& suggestion)
+        : SulfurError("E_NAME_404",
+                       "Undefined identifier: '" + name + "'",
+                       line,
+                       suggestion.empty()
+                           ? "Check for typos, or ensure '" + name + "' is declared before use."
+                           : "Did you mean '" + suggestion + "'?" ) {}
 };
 
 struct MathError : public SulfurError {

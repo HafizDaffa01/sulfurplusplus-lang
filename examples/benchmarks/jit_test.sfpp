@@ -1,0 +1,27 @@
+// jit_test.sfpp - Test @jit directive with simple functions
+
+
+fn add(a: int_64, b: int_64): int_64 {
+    return a + b;
+}
+
+
+fn fib(n: int_64): int_64 {
+    if (n < 2) { return n; }
+    return fib(n - 1) + fib(n - 2);
+}
+
+import std/io as io;
+import std/time as time;
+
+// Test basic add
+var sum = add(3, 4);
+io.Terminal.Out << "add(3, 4) = " << sum << io.Terminal.EOL;
+
+// Benchmark fibonacci
+var t0 = time.micros();
+var result = fib(32);
+var t1 = time.micros();
+
+io.Terminal.Out << "fib(32) = " << result << io.Terminal.EOL;
+io.Terminal.Out << "JIT time: " << (t1 - t0) / 1000000.0 << " sec" << io.Terminal.EOL;

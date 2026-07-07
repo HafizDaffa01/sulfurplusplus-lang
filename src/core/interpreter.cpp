@@ -14,14 +14,20 @@
 #include <iomanip>
 #include <thread>
 #include <chrono>
+#include "diagnostic.hpp"
+
+#ifdef ENABLE_LLVM
+#include "../llvm/llvm_ir_builder.hpp"
+#include "../llvm/llvm_jit.hpp"
+#endif
 
 
 
 // --- Constructor
 // --------------------------------------------------------------
 
-Interpreter::Interpreter(bool debugMode)
-    : debugMode_(debugMode), stdout_(&std::cout), stderr_(&std::cerr),
+Interpreter::Interpreter(bool debugMode, bool forceJIT)
+    : debugMode_(debugMode), forceJIT_(forceJIT), stdout_(&std::cout), stderr_(&std::cerr),
       stdin_(&std::cin) {
   globalEnv_ = std::make_shared<Environment>();
   currentEnv_ = globalEnv_;
@@ -190,6 +196,105 @@ void Interpreter::execVarDecl(const VarDeclStmt &s) {
   currentEnv_->define(s.name, val, mutable_);
 }
 
+#ifdef ENABLE_LLVM
+static void tryCompileJIT(std::shared_ptr<FunctionValue> fn) {
+  if (fn->isNative || !fn->decl) return;
+  const FnDeclStmt* decl = (const FnDeclStmt*)fn->decl;
+  try {
+      auto ctx = std::make_unique<llvm::LLVMContext>();
+      LLVMIRBuilder builder(*ctx);
+      builder.createModule(decl->name + "_module");
+      builder.emitFunction(decl);
+      builder.optimizeModule();
+      LLVMJIT::get().addModule(builder.takeModule(), std::move(ctx));
+      void *fnPtr = LLVMJIT::get().getFunctionPointer(decl->name);
+
+      bool retIsDouble =
+          (decl->retType == "float_64" || decl->retType == "float" ||
+           decl->retType == "double"   || decl->retType == "float_32");
+      std::vector<bool> argIsDouble;
+      argIsDouble.reserve(decl->params.size());
+      for (const auto &p : decl->params)
+        argIsDouble.push_back(p.second == "float_64" || p.second == "float" ||
+                              p.second == "double"   || p.second == "float_32");
+
+      fn->isNative = true;
+      fn->native = [fnPtr, retIsDouble, argIsDouble, name=decl->name]
+                   (std::vector<ValuePtr> args) -> ValuePtr {
+        size_t N = argIsDouble.size();
+        auto getI = [&](size_t i) -> int64_t {
+          return i < args.size() ? args[i].asInt() : 0LL;
+        };
+        auto getD = [&](size_t i) -> double {
+          return i < args.size() ? args[i].asFloat() : 0.0;
+        };
+        if (N == 0) {
+          if (retIsDouble) return makeFloat(((double (*)())fnPtr)());
+          return makeInt(((int64_t (*)())fnPtr)());
+        }
+        if (N == 1) {
+          if (!argIsDouble[0]) {
+            int64_t a0 = getI(0);
+            if (retIsDouble) return makeFloat(((double  (*)(int64_t))fnPtr)(a0));
+            return makeInt(((int64_t (*)(int64_t))fnPtr)(a0));
+          } else {
+            double a0 = getD(0);
+            if (retIsDouble) return makeFloat(((double  (*)(double))fnPtr)(a0));
+            return makeInt(((int64_t (*)(double))fnPtr)(a0));
+          }
+        }
+        if (N == 2) {
+          bool d0 = argIsDouble[0], d1 = argIsDouble[1];
+          if (!d0 && !d1) {
+            int64_t a0=getI(0), a1=getI(1);
+            if (retIsDouble) return makeFloat(((double  (*)(int64_t,int64_t))fnPtr)(a0,a1));
+            return makeInt(((int64_t (*)(int64_t,int64_t))fnPtr)(a0,a1));
+          } else if (d0 && d1) {
+            double a0=getD(0), a1=getD(1);
+            if (retIsDouble) return makeFloat(((double (*)(double,double))fnPtr)(a0,a1));
+            return makeInt(((int64_t (*)(double,double))fnPtr)(a0,a1));
+          } else if (d0) {
+            double a0=getD(0); int64_t a1=getI(1);
+            if (retIsDouble) return makeFloat(((double (*)(double,int64_t))fnPtr)(a0,a1));
+            return makeInt(((int64_t (*)(double,int64_t))fnPtr)(a0,a1));
+          } else {
+            int64_t a0=getI(0); double a1=getD(1);
+            if (retIsDouble) return makeFloat(((double (*)(int64_t,double))fnPtr)(a0,a1));
+            return makeInt(((int64_t (*)(int64_t,double))fnPtr)(a0,a1));
+          }
+        }
+        if (N == 3) {
+          bool anyDouble = argIsDouble[0]||argIsDouble[1]||argIsDouble[2];
+          if (!anyDouble) {
+            int64_t a0=getI(0),a1=getI(1),a2=getI(2);
+            if (retIsDouble) return makeFloat(((double  (*)(int64_t,int64_t,int64_t))fnPtr)(a0,a1,a2));
+            return makeInt(((int64_t (*)(int64_t,int64_t,int64_t))fnPtr)(a0,a1,a2));
+          } else {
+            double a0=argIsDouble[0]?getD(0):(double)getI(0);
+            double a1=argIsDouble[1]?getD(1):(double)getI(1);
+            double a2=argIsDouble[2]?getD(2):(double)getI(2);
+            if (retIsDouble) return makeFloat(((double (*)(double,double,double))fnPtr)(a0,a1,a2));
+            return makeInt((int64_t)((double (*)(double,double,double))fnPtr)(a0,a1,a2));
+          }
+        }
+        if (N == 4) {
+          int64_t a0=getI(0),a1=getI(1),a2=getI(2),a3=getI(3);
+          if (retIsDouble) return makeFloat(((double  (*)(int64_t,int64_t,int64_t,int64_t))fnPtr)(a0,a1,a2,a3));
+          return makeInt(((int64_t (*)(int64_t,int64_t,int64_t,int64_t))fnPtr)(a0,a1,a2,a3));
+        }
+        throw std::runtime_error(
+            "[JIT] Dispatch: arity " + std::to_string(N) +
+            " not supported; use JIT only for N<=4 params");
+      };
+      // std::cerr << "[JIT] Tiered Compilation successful for '" << decl->name << "'\n";
+  } catch (const std::exception &ex) {
+      std::cerr << "[JIT] Compilation failed for '" << decl->name
+                << "': " << ex.what() << "\n"
+                << "[JIT] Falling back to tree-walking interpreter.\n";
+  }
+}
+#endif
+
 void Interpreter::execFnDecl(const FnDeclStmt &s) {
   trace("FnDecl: " + s.name);
   auto fn = std::make_shared<FunctionValue>();
@@ -199,6 +304,14 @@ void Interpreter::execFnDecl(const FnDeclStmt &s) {
   fn->body = s.body.get();
   fn->closure = currentEnv_;
   fn->definedInFile = currentFile();
+  fn->decl = (void*)&s;
+
+#ifdef ENABLE_LLVM
+  if (forceJIT_) {
+    tryCompileJIT(fn);
+  }
+#endif
+
   currentEnv_->define(s.name, makeFn(fn), true);
 }
 
@@ -609,6 +722,10 @@ void Interpreter::execTryCatch(const TryCatchStmt &s) {
     throw;
   } catch (const SulfurError& err) {
     runFinally();
+    // Print enhanced error information with optional hint
+    // Retrieve the source line for context if available (simple placeholder)
+    std::string srcLine = ""; // Could be filled with actual line retrieval logic
+    sulfur::printError(err, srcLine);
     if (s.catchBody) {
       // Build error dict and bind to catchVar
       auto errDict = std::make_shared<DictValue>();
@@ -1210,6 +1327,55 @@ ValuePtr Interpreter::evalAssign(const AssignExpr &e) {
 }
 
 ValuePtr Interpreter::evalCall(const CallExpr &e) {
+  // Check alias registry for simple identifier calls
+  if (auto *id = std::get_if<IdentExpr>(&e.callee->data)) {
+    auto aliasIt = aliasRegistry_.find(id->name);
+    if (aliasIt != aliasRegistry_.end()) {
+      // Evaluate actual args
+      std::vector<std::string> argStrs;
+      for (auto &a : e.args) {
+        auto v = evalExpr(*a);
+        if (v.isStr()) {
+          argStrs.push_back("\"" + v.asStr() + "\"");
+        } else {
+          argStrs.push_back(v.toString());
+        }
+      }
+      // Substitute %1, %2, ... into expansion template
+      std::string expanded = aliasIt->second.expansion;
+      if (argStrs.size() != aliasIt->second.paramNames.size()) {
+        throw RuntimeError("Alias '" + id->name + "' expected " + std::to_string(aliasIt->second.paramNames.size()) + " arguments, got " + std::to_string(argStrs.size()), e.line);
+      }
+      for (size_t i = 0; i < argStrs.size(); i++) {
+        std::string ph = aliasIt->second.paramNames[i];
+        size_t pos = 0;
+        while ((pos = expanded.find(ph, pos)) != std::string::npos) {
+          bool wordStart = (pos == 0) || (!std::isalnum(expanded[pos - 1]) && expanded[pos - 1] != '_');
+          bool wordEnd = (pos + ph.size() == expanded.size()) || (!std::isalnum(expanded[pos + ph.size()]) && expanded[pos + ph.size()] != '_');
+          if (wordStart && wordEnd) {
+            expanded.replace(pos, ph.size(), argStrs[i]);
+            pos += argStrs[i].size();
+          } else {
+            pos += ph.size();
+          }
+        }
+      }
+      // Re-parse and execute the expanded statement
+      try {
+        Lexer lex(expanded + ";", "<alias>");
+        auto tokens = lex.tokenize();
+        Parser par(std::move(tokens));
+        auto stmts = par.parse();
+        ValuePtr result = makeNull();
+        for (auto &stmt : stmts)
+          execStmt(*stmt);
+        return result;
+      } catch (const std::exception &ex) {
+        throw RuntimeError(std::string("Alias expansion error: ") + ex.what(), e.line);
+      }
+    }
+  }
+
   // Evaluate arguments
   std::vector<ValuePtr> args;
   args.reserve(e.args.size());
@@ -1328,6 +1494,13 @@ ValuePtr Interpreter::evalCall(const CallExpr &e) {
 ValuePtr Interpreter::callFunction(std::shared_ptr<FunctionValue> fn,
                                    std::vector<ValuePtr> args, int line) {
   trace("Call: function '" + fn->name + "'");
+  fn->callCount++;
+#ifdef ENABLE_LLVM
+  if (!fn->isNative && fn->callCount == 50) {
+      tryCompileJIT(fn);
+  }
+#endif
+
   if (fn->isNative) {
     return fn->native(std::move(args));
   }
@@ -3375,6 +3548,57 @@ void Interpreter::registerBuiltins() {
   defNative("sys_process_exec", [](std::vector<ValuePtr> args) -> ValuePtr {
     if (args.empty()) return makeStr("");
     return makeStr("Executed: " + args[0]->toString());
+  });
+
+  // Low-level native used by the sfpp-side Alias class (src/stdlib/alias.sfpp)
+  // __alias_register__(name: str, paramCount: int, expansion: str) -> null
+  defNative("__alias_register__", [this](std::vector<ValuePtr> args) -> ValuePtr {
+    if (args.size() < 3)
+      throw RuntimeError("__alias_register__ requires 3 arguments", 0);
+    std::string name      = args[0]->toString();
+    std::string paramsStr = args[1]->toString();
+    std::string expansion = args[2]->toString();
+    
+    std::vector<std::string> paramNames;
+    if (!paramsStr.empty()) {
+        std::stringstream ss(paramsStr);
+        std::string token;
+        while (std::getline(ss, token, ',')) {
+            size_t start = token.find_first_not_of(" \t\r\n");
+            size_t end = token.find_last_not_of(" \t\r\n");
+            if (start != std::string::npos) {
+                paramNames.push_back(token.substr(start, end - start + 1));
+            }
+        }
+    }
+    
+    aliasRegistry_[name] = AliasEntry{paramNames, expansion};
+    return makeNull();
+  });
+
+  // __alias_has__(name) -> bool
+  defNative("__alias_has__", [this](std::vector<ValuePtr> args) -> ValuePtr {
+    if (args.empty()) return makeBool(false);
+    return makeBool(aliasRegistry_.count(args[0]->toString()) > 0);
+  });
+
+  // __alias_expand__(name, arg1, arg2, ...) -> string
+  defNative("__alias_expand__", [this](std::vector<ValuePtr> args) -> ValuePtr {
+    if (args.empty()) return makeStr("");
+    std::string name = args[0]->toString();
+    auto it = aliasRegistry_.find(name);
+    if (it == aliasRegistry_.end()) return makeStr("");
+    std::string result = it->second.expansion;
+    for (size_t i = 1; i < args.size(); i++) {
+      std::string ph  = "%" + std::to_string(i);
+      std::string val = args[i]->toString();
+      size_t pos = 0;
+      while ((pos = result.find(ph, pos)) != std::string::npos) {
+        result.replace(pos, ph.size(), val);
+        pos += val.size();
+      }
+    }
+    return makeStr(result);
   });
 
   builtinsRegistry_ = makeDict(builtins);

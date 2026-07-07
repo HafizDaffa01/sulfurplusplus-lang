@@ -21,3 +21,4 @@ expose "now" as now;
 
 expose "Terminal" as Terminal;
 expose "TIO" as TIO;
+import std/alias --use=[NOLIBNAME];

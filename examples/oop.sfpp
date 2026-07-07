@@ -9,7 +9,8 @@ class Dog : Animal {
     var name;
     
     // Constructor
-    +1>auto dynamicVar = "Can be a string";
+    fn Dog(name) { /* constructor body, 'name' arg can be used */ }
+    fn ~Dog() { /* destructor body */ }
     
     fn speak() {
         // Output "Woof"

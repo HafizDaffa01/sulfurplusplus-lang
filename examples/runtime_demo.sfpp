@@ -1,0 +1,15 @@
+import std/runtime as rt;
+import std/io as io;
+import std/fmt as fmt;
+
+io.Terminal.Out << "Program start - PID: " << fmt("{0}", rt.pid()) << io.Terminal.EOL;
+io.Terminal.Out << "Waiting 500 ms..." << io.Terminal.EOL;
+
+// Simple busy-wait (not efficient, just for demo)
+rt.sleep(500);
+
+
+io.Terminal.Out << "Elapsed: " << rt.elapsed_pretty() << io.Terminal.EOL;
+
+// Uncomment the next line to see the EOF behavior:
+// rt.EOF();

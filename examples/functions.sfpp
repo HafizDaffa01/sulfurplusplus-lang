@@ -10,7 +10,7 @@ fn greet(name) {
     Terminal.Out << "Hello, " << name << Terminal.EOL;
 }
 
-fn main() {
+// main entry removed; example focuses on functions only
     var result = add(5, 10);
     greet("Developer");
 }

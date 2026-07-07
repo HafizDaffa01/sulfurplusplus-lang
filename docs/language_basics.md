@@ -59,5 +59,9 @@ try {
 ```
 Use `try/catch` to capture runtime errors. Errors are ordinary values.
 
+## Tiered JIT Compilation
+Sulfur++ features a Tiered JIT Compilation mechanism powered by LLVM. By default, functions execute through the tree-walking interpreter for fast startup. If a function is called 50 times (making it a "hot-spot"), the runtime will automatically JIT-compile it in the background for maximum native performance.
+You can also force the engine to JIT compile all functions immediately by passing the `--jit` or `-j` flag to `combust`.
+
 ---
 Continue to the next tutorial for the standard library I/O module: [stdlib_io.md](stdlib_io.md).

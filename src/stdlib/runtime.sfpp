@@ -1,0 +1,40 @@
+// std/runtime.sfpp
+// Sulfur++ Runtime Information API
+// Provides information about the currently executing runtime environment.
+
+export this as std/runtime;
+import std/time as time;
+
+class RuntimeAPI {
+    startTime;
+
+    fn init() {
+        // Record the time the module was initialized
+        this.startTime = time.micros();
+    }
+
+    // Returns the uptime in milliseconds
+    fn uptimeMillis() {
+        var current = time.micros();
+        return (current - this.startTime) / 1000;
+    }
+
+    // Returns the uptime in seconds
+    fn uptimeSeconds() {
+        var current = time.micros();
+        return (current - this.startTime) / 1000000.0;
+    }
+    
+    // Returns the current execution engine
+    fn getEngineName() {
+        return "combust";
+    }
+
+    // Returns the language name
+    fn getLanguage() {
+        return "Sulfur++";
+    }
+}
+
+// Global instance for easy access
+var Runtime = new RuntimeAPI();

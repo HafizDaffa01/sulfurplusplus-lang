@@ -1,0 +1,10 @@
+// minimal_jit.sfpp - minimal JIT test
+import std/io as io;
+
+
+fn add(a: int_64, b: int_64): int_64 {
+    return a + b;
+}
+
+var r = add(10, 20);
+io.Terminal.Out << "Result: " << r << io.Terminal.EOL;

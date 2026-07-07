@@ -131,6 +131,7 @@ std::vector<std::pair<std::string, std::string>> Parser::parseParamList() {
 StmtPtr Parser::parseStmt() {
   int line = peek().line;
 
+
   if (check(TokenType::LET))
     return parseVarDecl("let");
   if (check(TokenType::VAR))
