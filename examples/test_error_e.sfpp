@@ -1,9 +1,0 @@
-import std/io as io;
-
-var err = io.io_e("This is a standard error");
-err = io.io_withCode(err, "SYNTAX_404");
-err = io.io_withHint(err, "Check your spelling.");
-
-throw err;
-
-io.Terminal.Out << "Program will never reach here!" << io.Terminal.EOL;

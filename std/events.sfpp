@@ -1,0 +1,61 @@
+// std/events.sfpp
+// Sulfur++ Asynchronous Event Loop
+// Provides non-blocking task scheduling (setInterval and setTimeout).
+
+export this as std/events;
+
+import std/time;
+
+// Internal queue of tasks
+var tasks = [];
+
+// Helper to add task
+fn addTask(delay, callback, type) {
+    var triggerTime = time.micros() + (delay * 1000);
+    tasks.push({
+        "trigger": triggerTime,
+        "callback": callback,
+        "delay": delay,
+        "type": type // "interval" or "timeout"
+    });
+}
+
+// Scheduled tasks
+fn setInterval(delay, callback) {
+    addTask(delay, callback, "interval");
+}
+
+fn setTimeout(delay, callback) {
+    addTask(delay, callback, "timeout");
+}
+
+// Main event loop
+fn run() {
+    Terminal.Out << "Event loop started." << Terminal.EOL;
+    
+    while (len(tasks) > 0) {
+        var now = time.micros();
+        
+        // Iterate through tasks
+        for (i = 0; i < len(tasks); i = i + 1) {
+            var task = tasks[i];
+            
+            if (now >= task["trigger"]) {
+                // Execute task
+                task["callback"]();
+                
+                // Handle interval vs timeout
+                if (task["type"] == "interval") {
+                    tasks[i]["trigger"] = now + (task["delay"] * 1000);
+                } else {
+                    // Remove timeout task
+                    tasks.remove(i);
+                    i = i - 1; // Adjust index
+                }
+            }
+        }
+        
+        // Small delay to prevent CPU spinning
+        time.delay(1);
+    }
+}

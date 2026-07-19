@@ -1,9 +1,0 @@
-import std/io as io;
-
-var err = io.io_fe("This is a fatal error");
-err = io.io_withCode(err, "VM_CRASH_001");
-err = io.io_withHint(err, "Reinstall the application.");
-
-throw err;
-
-io.Terminal.Out << "Program will never reach here!" << io.Terminal.EOL;

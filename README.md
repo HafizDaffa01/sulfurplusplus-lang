@@ -33,7 +33,7 @@ Sulfur++ supports the following base types natively:
 ## Keywords
 
 Sulfur++ features a clean set of reserved keywords:
-`var`, `const`, `fn`, `return`, `if`, `else`, `while`, `for`, `in`, `break`, `continue`, `class`, `struct`, `new`, `null`, `true`, `false`, `import`, `as`, `export`, `expose`, `unsafe`, `throw`.
+`let`, `var`, `fn`, `return`, `if`, `else`, `while`, `for`, `in`, `break`, `continue`, `class`, `struct`, `new`, `null`, `true`, `false`, `import`, `as`, `export`, `expose`, `unsafe`, `throw`, `match`.
 
 ## Syntax Examples
 
@@ -42,7 +42,7 @@ Sulfur++ features a clean set of reserved keywords:
 import std/io as io;
 
 var x = 10;
-const pi = 3.14159;
+let pi = 3.14159;
 
 // Complex math
 import std/math as math;
@@ -78,6 +78,27 @@ var B = mat.m_Eye(2);
 var C = mat.m_Mul(A, B); // Native C++ matrix multiplication
 ```
 
+### Match Expression
+```sfpp
+import std/io as io;
+
+var status = 200;
+match (status) {
+    200 => { io.Terminal.Out << "OK\n"; }
+    404 => { io.Terminal.Out << "Not Found\n"; }
+    _ => { io.Terminal.Out << "Unknown\n"; }
+}
+```
+
+### JSON
+```sfpp
+import std/json as json;
+
+var data = json.parse("{\"name\": \"sulfur\", \"version\": 1}");
+var encoded = json.stringify(data);
+var pretty = json.pretty(data);
+```
+
 ## Error Diagnostics System
 
 Sulfur++ features a robust, categorized error and diagnostic system. Uncaught exceptions or thrown errors will display exact file lines and context.
@@ -106,22 +127,7 @@ Executes Sulfur++ scripts or starts the interactive REPL.
 combust main.sfpp
 combust main.sfpp --watch  # Auto-reload on save
 combust main.sfpp --debug  # Print memory and trace logs
-```
-
-### fuse (Package Manager)
-Manages dependencies and Sulfur++ projects.
-```bash
-fuse init
-fuse add <user>/<package>
-fuse run start
-```
-
-### ignitor (Embedded Deployment)
-Flashes scripts onto embedded IoT targets.
-```bash
-ignitor init
-ignitor flash
-ignitor flash --bin
+combust --compile main.sfpp -o myapp  # Compile to standalone executable
 ```
 
 ## Standard Library (std/)
@@ -133,6 +139,7 @@ ignitor flash --bin
 * `std/math`: Advanced mathematical operations and complex constructors.
 * `std/matrix`: Linear algebra engine.
 * `std/string`: String manipulation.
+* `std/json`: JSON parsing and serialization.
 
 ## Building from Source
 

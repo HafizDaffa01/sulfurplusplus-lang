@@ -293,12 +293,24 @@ struct ThrowStmt {
   int line;
 };
 
+struct MatchCase {
+  ExprPtr pattern;  // null for default/wildcard case
+  StmtPtr body;
+  int line;
+};
+
+struct MatchStmt {
+  ExprPtr value;
+  std::vector<MatchCase> cases;
+  int line;
+};
+
 struct Stmt {
   std::variant<VarDeclStmt, FnDeclStmt, ReturnStmt, BreakStmt, ContinueStmt,
                BlockStmt, IfStmt, WhileStmt, ForStmt, ClassDeclStmt,
                StructDeclStmt, InterfaceDeclStmt, ExprStmt, StreamOutStmt,
                ImportStmt, ExportStmt, UnsafeStmt, DeferStmt, TryCatchStmt,
-               ExposeStmt, OverwriteStmt, ThrowStmt>
+               ExposeStmt, OverwriteStmt, ThrowStmt, MatchStmt>
       data;
 
   template <typename T> Stmt(T &&v) : data(std::forward<T>(v)) {}

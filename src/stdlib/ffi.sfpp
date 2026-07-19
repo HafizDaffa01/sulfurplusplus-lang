@@ -1,0 +1,68 @@
+export this as std/ffi;
+
+class Library {
+    handle;
+
+    +1>init;
+    fn init(h) {
+        this.handle = h;
+    }
+
+    fn sym(name) {
+        return ffi_dlsym(this.handle, name);
+    }
+
+    fn call(name, args, retType) {
+        var func = ffi_dlsym(this.handle, name);
+        return ffi_call(func, args, retType);
+    }
+
+    fn close() {
+        ffi_dlclose(this.handle);
+    }
+}
+
+fn load(path) {
+    var handle = ffi_dlopen(path);
+    return new Library(handle);
+}
+
+fn callInt(func, args) {
+    return ffi_call(func, args, "int");
+}
+
+fn callFloat(func, args) {
+    return ffi_call(func, args, "float");
+}
+
+fn callVoid(func, args) {
+    return ffi_call(func, args, "void");
+}
+
+fn callStr(func, args) {
+    return ffi_call(func, args, "str");
+}
+
+fn callRaw(func, args) {
+    return ffi_call(func, args, "ptr");
+}
+
+fn memRead(address, offset) {
+    return ffi_mem_read(address, offset);
+}
+
+fn memWrite(address, offset, value) {
+    ffi_mem_write(address, offset, value);
+}
+
+fn strRead(address) {
+    return ffi_str_read(address);
+}
+
+fn strWrite(address, offset, value) {
+    ffi_str_write(address, offset, value);
+}
+
+fn sizeof(typeName) {
+    return ffi_sizeof(typeName);
+}

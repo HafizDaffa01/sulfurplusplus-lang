@@ -173,6 +173,8 @@ StmtPtr Parser::parseStmt() {
     return parseDefer();
   if (check(TokenType::TRY))
     return parseTryCatch();
+  if (check(TokenType::MATCH))
+    return parseMatch();
 
   if (check(TokenType::BREAK)) {
     advance();
@@ -550,6 +552,34 @@ StmtPtr Parser::parseTryCatch() {
   return std::make_unique<Stmt>(TryCatchStmt{
       std::move(tryBody), catchVar, std::move(catchBody),
       std::move(finallyBody), line});
+}
+
+StmtPtr Parser::parseMatch() {
+  int line = peek().line;
+  advance(); // consume 'match'
+  expect(TokenType::LPAREN, "Expected '(' after 'match'");
+  auto value = parseExpr();
+  expect(TokenType::RPAREN, "Expected ')' after match value");
+  expect(TokenType::LBRACE, "Expected '{' to start match cases");
+
+  std::vector<MatchCase> cases;
+  while (!check(TokenType::RBRACE) && !isAtEnd()) {
+    int caseLine = peek().line;
+    ExprPtr pattern;
+    // '_' is wildcard/default case
+    if (check(TokenType::IDENT) && peek().value == "_") {
+      advance();
+      pattern = nullptr; // null pattern = default
+    } else {
+      pattern = parseExpr();
+    }
+    expect(TokenType::FAT_ARROW, "Expected '=>' after match pattern");
+    auto body = parseBlock();
+    cases.push_back(MatchCase{std::move(pattern), std::move(body), caseLine});
+  }
+  expect(TokenType::RBRACE, "Expected '}' to end match cases");
+  return std::make_unique<Stmt>(
+      MatchStmt{std::move(value), std::move(cases), line});
 }
 
 StmtPtr Parser::parseExprStmt() {

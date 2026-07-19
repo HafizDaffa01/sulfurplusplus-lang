@@ -1,0 +1,31 @@
+// std/io.sfpp
+export this as std/io;
+
+// File I/O — all backed by native builtins
+
+expose "io_readfile"    as readFile;     // readFile(path) -> str
+expose "io_writefile"   as writeFile;    // writeFile(path, content) -> null
+expose "io_appendfile"  as appendFile;   // appendFile(path, content) -> null
+expose "io_fileexists"  as fileExists;   // fileExists(path) -> bool
+expose "io_deletefile"  as deleteFile;   // deleteFile(path) -> null
+expose "io_readlines"   as readLines;    // readLines(path) -> list<str>
+expose "io_writelines"  as writeLines;   // writeLines(path, lines: list) -> null
+expose "io_cwd"         as cwd;          // cwd() -> str
+expose "io_listdir"     as listDir;      // listDir(path) -> list<str>
+expose "io_isdir"       as isDir;        // isDir(path) -> bool
+expose "io_isfile"      as isFile;       // isFile(path) -> bool
+expose "io_mkdir"       as mkdir;        // mkdir(path) -> null
+expose "Terminal" as Terminal;     // Terminal I/O Stream
+expose "TIO" as TIO;               // TIO built-in for errors
+
+// TIO helpers (renamed to io_)
+let io_e            = TIO.E;           // error
+let io_fe           = TIO.FE;          // fatal error
+let io_w            = TIO.W;           // warning
+
+// Builder helpers
+let io_withCategory = TIO.withCategory; // (errorDict, category) -> errorDict
+let io_withCode     = TIO.withCode;     // (errorDict, code)     -> errorDict
+let io_withHint     = TIO.withHint;     // (errorDict, hint)     -> errorDict
+let io_withContext  = TIO.withContext;  // (errorDict, context)  -> errorDict
+

@@ -1,4 +1,0 @@
-import std/io as io;
-
-var x = unknownVar + 1; // undefined variable to trigger NameError
-io.Terminal.Out << "Result: " << x << "\n";

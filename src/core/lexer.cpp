@@ -37,6 +37,7 @@ static const std::unordered_map<std::string, TokenType> KEYWORDS = {
     {"ptr",       TokenType::PTR},
     {"new",       TokenType::NEW},
     {"delete",    TokenType::DELETE},
+    {"match",     TokenType::MATCH},
     {"int_8",     TokenType::TYPE_INT8},
     {"int_16",    TokenType::TYPE_INT16},
     {"int_32",    TokenType::TYPE_INT32},

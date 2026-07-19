@@ -1,0 +1,28 @@
+// std/alias.sfpp
+export this as std/alias;
+
+import std/string as string;
+
+expose "__alias_register__" as __alias_register__;
+
+class AliasAPI {
+    +1>init;
+    fn init() {}
+
+    fn create(pattern, expansion) {
+        var parenPos = string.indexOf(pattern, "(");
+        var name = pattern;
+        var argsPart = "";
+        if (parenPos != -1) {
+            name = string.slice(pattern, 0, parenPos);
+            var endParen = string.indexOf(pattern, ")");
+            if (endParen != -1) {
+                argsPart = string.slice(pattern, parenPos + 1, endParen);
+            }
+        }
+
+        __alias_register__(name, argsPart, expansion);
+    }
+}
+
+var Alias = new AliasAPI();

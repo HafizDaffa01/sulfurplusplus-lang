@@ -1,0 +1,369 @@
+export this as std/json;
+
+import std/io as io;
+import std/collections as collections;
+
+class _JSONParser {
+    src;
+    pos;
+
+    +1>init;
+    fn init(input) {
+        this.src = input;
+        this.pos = 0;
+    }
+
+    fn _skipWhitespace() {
+        while (this.pos < len(this.src)) {
+            var ch = this.src[this.pos];
+            if (ch == " ") {
+                this.pos = this.pos + 1;
+            } else if (ch == "\n") {
+                this.pos = this.pos + 1;
+            } else if (ch == "\r") {
+                this.pos = this.pos + 1;
+            } else if (ch == "\t") {
+                this.pos = this.pos + 1;
+            } else {
+                break;
+            }
+        }
+    }
+
+    fn _peek() {
+        this._skipWhitespace();
+        if (this.pos >= len(this.src)) {
+            return "";
+        }
+        return this.src[this.pos];
+    }
+
+    fn _advance() {
+        var ch = this.src[this.pos];
+        this.pos = this.pos + 1;
+        return ch;
+    }
+
+    fn _expect(ch) {
+        this._skipWhitespace();
+        if (this.pos >= len(this.src)) {
+            throw "JSON parse error: expected '" + ch + "' at end of input";
+        }
+        if (this.src[this.pos] != ch) {
+            throw "JSON parse error: expected '" + ch + "' at position " + toStr(this.pos);
+        }
+        this.pos = this.pos + 1;
+    }
+
+    fn _parseString() {
+        this._expect("\"");
+        var result = "";
+        while (this.pos < len(this.src)) {
+            var ch = this.src[this.pos];
+            if (ch == "\"") {
+                this.pos = this.pos + 1;
+                return result;
+            }
+            if (ch == "\\") {
+                this.pos = this.pos + 1;
+                var esc = this.src[this.pos];
+                if (esc == "n") {
+                    result = result + "\n";
+                } else if (esc == "t") {
+                    result = result + "\t";
+                } else if (esc == "r") {
+                    result = result + "\r";
+                } else if (esc == "\\") {
+                    result = result + "\\";
+                } else if (esc == "\"") {
+                    result = result + "\"";
+                } else if (esc == "0") {
+                    result = result + "\0";
+                } else {
+                    result = result + esc;
+                }
+                this.pos = this.pos + 1;
+            } else {
+                result = result + ch;
+                this.pos = this.pos + 1;
+            }
+        }
+        throw "JSON parse error: unterminated string";
+    }
+
+    fn _parseNumber() {
+        this._skipWhitespace();
+        var numStr = "";
+        var isFloat = false;
+        if (this.pos < len(this.src) && this.src[this.pos] == "-") {
+            numStr = numStr + "-";
+            this.pos = this.pos + 1;
+        }
+        while (this.pos < len(this.src) && this.src[this.pos] >= "0" && this.src[this.pos] <= "9") {
+            numStr = numStr + this.src[this.pos];
+            this.pos = this.pos + 1;
+        }
+        if (this.pos < len(this.src) && this.src[this.pos] == ".") {
+            isFloat = true;
+            numStr = numStr + ".";
+            this.pos = this.pos + 1;
+            while (this.pos < len(this.src) && this.src[this.pos] >= "0" && this.src[this.pos] <= "9") {
+                numStr = numStr + this.src[this.pos];
+                this.pos = this.pos + 1;
+            }
+        }
+        if (this.pos < len(this.src) && (this.src[this.pos] == "e" || this.src[this.pos] == "E")) {
+            isFloat = true;
+            numStr = numStr + this.src[this.pos];
+            this.pos = this.pos + 1;
+            if (this.pos < len(this.src) && (this.src[this.pos] == "+" || this.src[this.pos] == "-")) {
+                numStr = numStr + this.src[this.pos];
+                this.pos = this.pos + 1;
+            }
+            while (this.pos < len(this.src) && this.src[this.pos] >= "0" && this.src[this.pos] <= "9") {
+                numStr = numStr + this.src[this.pos];
+                this.pos = this.pos + 1;
+            }
+        }
+        if (isFloat) {
+            return toFloat(numStr);
+        }
+        return toInt(numStr);
+    }
+
+    fn _parseValue() {
+        var ch = this._peek();
+        if (ch == "\"") {
+            return this._parseString();
+        }
+        if (ch == "{") {
+            return this._parseObject();
+        }
+        if (ch == "[") {
+            return this._parseArray();
+        }
+        if (ch == "t") {
+            this.pos = this.pos + 4;
+            return true;
+        }
+        if (ch == "f") {
+            this.pos = this.pos + 5;
+            return false;
+        }
+        if (ch == "n") {
+            this.pos = this.pos + 4;
+            return null;
+        }
+        if ((ch >= "0" && ch <= "9") || ch == "-") {
+            return this._parseNumber();
+        }
+        throw "JSON parse error: unexpected character '" + ch + "' at position " + toStr(this.pos);
+    }
+
+    fn _parseObject() {
+        this._expect("{");
+        var obj = {};
+        var ch = this._peek();
+        if (ch == "}") {
+            this.pos = this.pos + 1;
+            return obj;
+        }
+        while (true) {
+            var key = this._parseString();
+            this._expect(":");
+            var val = this._parseValue();
+            obj[key] = val;
+            ch = this._peek();
+            if (ch == "}") {
+                this.pos = this.pos + 1;
+                return obj;
+            }
+            this._expect(",");
+        }
+    }
+
+    fn _parseArray() {
+        this._expect("[");
+        var arr = [];
+        var ch = this._peek();
+        if (ch == "]") {
+            this.pos = this.pos + 1;
+            return arr;
+        }
+        while (true) {
+            var val = this._parseValue();
+            arr = arr + [val];
+            ch = this._peek();
+            if (ch == "]") {
+                this.pos = this.pos + 1;
+                return arr;
+            }
+            this._expect(",");
+        }
+    }
+
+    fn parse() {
+        var result = this._parseValue();
+        this._skipWhitespace();
+        if (this.pos < len(this.src)) {
+            throw "JSON parse error: unexpected trailing content at position " + toStr(this.pos);
+        }
+        return result;
+    }
+}
+
+fn parse(input) {
+    var parser = new _JSONParser(input);
+    return parser.parse();
+}
+
+fn parseFile(path) {
+    var content = io.readFile(path);
+    return parse(content);
+}
+
+fn _escapeString(s) {
+    var result = "";
+    var i = 0;
+    while (i < len(s)) {
+        var ch = s[i];
+        if (ch == "\"") {
+            result = result + "\\\"";
+        } else if (ch == "\\") {
+            result = result + "\\\\";
+        } else if (ch == "\n") {
+            result = result + "\\n";
+        } else if (ch == "\r") {
+            result = result + "\\r";
+        } else if (ch == "\t") {
+            result = result + "\\t";
+        } else {
+            result = result + ch;
+        }
+        i = i + 1;
+    }
+    return result;
+}
+
+fn stringify(obj) {
+    return _stringifyValue(obj, false);
+}
+
+fn pretty(obj) {
+    return _stringifyValue(obj, true);
+}
+
+fn _stringifyValue(obj, indent) {
+    if (obj == null) {
+        return "null";
+    }
+    if (typeOf(obj) == "bool") {
+        if (obj == true) {
+            return "true";
+        }
+        return "false";
+    }
+    if (typeOf(obj) == "int_64") {
+        return toStr(obj);
+    }
+    if (typeOf(obj) == "float_64") {
+        return toStr(obj);
+    }
+    if (typeOf(obj) == "str") {
+        return "\"" + _escapeString(obj) + "\"";
+    }
+    if (typeOf(obj) == "list") {
+        return _stringifyList(obj, indent, 0);
+    }
+    if (typeOf(obj) == "dict") {
+        return _stringifyDict(obj, indent, 0);
+    }
+    throw "JSON error: cannot stringify type " + typeOf(obj);
+}
+
+fn _stringifyList(arr, indent, depth) {
+    if (len(arr) == 0) {
+        return "[]";
+    }
+    if (indent == false) {
+        var result = "[";
+        var i = 0;
+        while (i < len(arr)) {
+            if (i > 0) {
+                result = result + ",";
+            }
+            result = result + _stringifyValue(arr[i], false);
+            i = i + 1;
+        }
+        return result + "]";
+    }
+    var pad = "";
+    var p = 0;
+    while (p < depth + 1) {
+        pad = pad + "    ";
+        p = p + 1;
+    }
+    var padInner = "";
+    p = 0;
+    while (p < depth) {
+        padInner = padInner + "    ";
+        p = p + 1;
+    }
+    var result = "[\n";
+    var i = 0;
+    while (i < len(arr)) {
+        result = result + pad + _stringifyValue(arr[i], true);
+        if (i < len(arr) - 1) {
+            result = result + ",";
+        }
+        result = result + "\n";
+        i = i + 1;
+    }
+    return result + padInner + "]";
+}
+
+fn _stringifyDict(obj, indent, depth) {
+    var keys = collections.keys(obj);
+    if (len(keys) == 0) {
+        return "{}";
+    }
+    if (indent == false) {
+        var result = "{";
+        var i = 0;
+        while (i < len(keys)) {
+            if (i > 0) {
+                result = result + ",";
+            }
+            result = result + "\"" + _escapeString(keys[i]) + "\":" + _stringifyValue(obj[keys[i]], false);
+            i = i + 1;
+        }
+        return result + "}";
+    }
+    var pad = "";
+    var p = 0;
+    while (p < depth + 1) {
+        pad = pad + "    ";
+        p = p + 1;
+    }
+    var padInner = "";
+    p = 0;
+    while (p < depth) {
+        padInner = padInner + "    ";
+        p = p + 1;
+    }
+    var result = "{\n";
+    var i = 0;
+    while (i < len(keys)) {
+        result = result + pad + "\"" + _escapeString(keys[i]) + "\": " + _stringifyValue(obj[keys[i]], true);
+        if (i < len(keys) - 1) {
+            result = result + ",";
+        }
+        result = result + "\n";
+        i = i + 1;
+    }
+    return result + padInner + "}";
+}
+
+fn stringifyFile(path, obj) {
+    io.writeFile(path, stringify(obj));
+}

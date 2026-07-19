@@ -1,4 +1,0 @@
-import std/io as io;
-import std/runtime as rn;
-
-io.Terminal.Out << "Hello from Sulfur++" << io.Terminal.EOL;

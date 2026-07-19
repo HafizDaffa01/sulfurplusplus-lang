@@ -17,6 +17,7 @@ enum class TokenType {
     PTR, REF,
     NULL_KW, TRUE_KW, FALSE_KW,
     NEW, DELETE,
+    MATCH,
 
     // Types
     TYPE_INT8, TYPE_INT16, TYPE_INT32, TYPE_INT64,

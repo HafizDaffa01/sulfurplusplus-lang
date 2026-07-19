@@ -1,6 +1,0 @@
-import std/builtin --use=[NOLIBNAME];
-
-Alias.create("print(msg)", "Terminal.Out << msg << Terminal.EOL");
-
-print("Hello from Alias!");
-print("Alias works too");

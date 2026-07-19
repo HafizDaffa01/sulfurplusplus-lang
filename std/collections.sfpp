@@ -1,0 +1,32 @@
+// std/collections.sfpp
+export this as std/collections;
+
+// Collection utilities — all backed by native builtins
+
+// List utilities
+expose "col_map" as map;         // map(list, fn) -> list
+expose "col_filter" as filter;      // filter(list, fn) -> list
+expose "col_reduce" as reduce;      // reduce(list, fn, init) -> value
+expose "col_any" as any;         // any(list, fn) -> bool
+expose "col_all" as all;         // all(list, fn) -> bool
+expose "col_find" as find;        // find(list, fn) -> value | null
+expose "col_findindex" as findIndex;   // findIndex(list, fn) -> int (-1 if not found)
+expose "col_flatten" as flatten;     // flatten(list) -> list
+expose "col_unique" as unique;      // unique(list) -> list
+expose "col_sort" as sort;        // sort(list, fn?) -> list
+expose "col_sortby" as sortBy;      // sortBy(list, key_fn) -> list
+expose "col_groupby" as groupBy;     // groupBy(list, key_fn) -> dict
+expose "col_zip" as zip;         // zip(list, list) -> list<list>
+expose "col_take" as take;        // take(list, n) -> list
+expose "col_drop" as drop;        // drop(list, n) -> list
+expose "col_count" as count;       // count(list, fn?) -> int
+expose "col_sum" as sum;         // sum(list) -> int|float
+expose "col_min" as min;         // min(list) -> value
+expose "col_max" as max;         // max(list) -> value
+
+// Dict utilities
+expose "col_keys" as keys;        // keys(dict) -> list
+expose "col_values" as values;      // values(dict) -> list
+expose "col_entries" as entries;     // entries(dict) -> list<[k,v]>
+expose "col_merge" as merge;       // merge(dict, dict) -> dict
+expose "col_haskey" as hasKey;      // hasKey(dict, key) -> bool

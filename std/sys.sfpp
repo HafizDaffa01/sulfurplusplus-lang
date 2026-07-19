@@ -1,0 +1,117 @@
+// std/sys.sfpp
+// Sulfur++ Low-Level API
+// Provides raw system hardware access, OS bindings, and memory management for Desktop & IoT
+
+export this as std/sys;
+
+expose "Terminal" as Terminal;
+expose "TIO" as TIO;
+
+// ==========================================
+// 1. Core Memory Management (General Purpose)
+// ==========================================
+expose "sys_memory_alloc" as nativeMalloc;
+expose "sys_memory_free"  as nativeFree;
+expose "sys_memory_read"  as nativeMemRead;
+expose "sys_memory_write" as nativeMemWrite;
+
+class Pointer {
+    address;
+    +1>init;
+    fn init(addr) {
+        this.address = addr;
+    }
+    fn read() {
+        var val = null;
+        unsafe { val = nativeMemRead(this.address); }
+        return val;
+    }
+    fn write(val) {
+        unsafe { nativeMemWrite(this.address, val); }
+    }
+    fn free() {
+        unsafe { nativeFree(this.address); }
+    }
+}
+
+// ==========================================
+// 2. Hardware I/O (IoT / Embedded)
+// ==========================================
+expose "iot_gpio_mode"  as nativeGpioMode;
+expose "iot_gpio_write" as nativeGpioWrite;
+expose "iot_gpio_read"  as nativeGpioRead;
+
+class GPIO {
+    pin;
+    +1>init;
+    fn init(pinNum) {
+        this.pin = pinNum;
+    }
+    fn setMode(mode) {
+        // mode: 1 = OUTPUT, 0 = INPUT
+        unsafe { nativeGpioMode(this.pin, mode); }
+    }
+    fn write(value) {
+        // value: 1 = HIGH, 0 = LOW
+        unsafe { nativeGpioWrite(this.pin, value); }
+    }
+    fn read() {
+        var val = 0;
+        unsafe { val = nativeGpioRead(this.pin); }
+        return val;
+    }
+}
+
+// ==========================================
+// 3. Network Subsystem (IoT & Desktop)
+// ==========================================
+expose "sys_wifi_connect" as nativeWifiConnect;
+
+class WiFiManager {
+    connected;
+    +1>init;
+    fn init() {
+        this.connected = false;
+    }
+
+    fn connect(ssid, password) {
+        var result = false;
+        unsafe {
+            Terminal.Out << "[sys.network] Executing low-level WiFi connection to " << ssid << "..." << Terminal.EOL;
+            result = nativeWifiConnect(ssid, password);
+        }
+        if (result) {
+            this.connected = true;
+            return true;
+        } else {
+            return io_withHint(
+                io_withCode(io_withCategory(io_e("Failed to connect to WiFi"), "SYS_NETWORK"), "WIFI_ERR_001"),
+                "Ensure the SSID and password are correct, and the adapter is enabled."
+            );
+        }
+    }
+}
+
+// ==========================================
+// 4. OS / Shell Commands (Desktop)
+// ==========================================
+expose "sys_process_exec" as nativeExec;
+
+fn exec(cmd) {
+    var result = null;
+    unsafe {
+        result = nativeExec(cmd);
+    }
+    return result;
+}
+
+// Example Overwrite implementation (Mocking)
+fn mockWifiConnect(ssid, pass) {
+    Terminal.Out << "[sys.mock] Intercepted WiFi connection request to " << ssid << Terminal.EOL;
+    return true; 
+}
+
+fn applyWifiMock() {
+    overwrite nativeWifiConnect = mockWifiConnect;
+    Terminal.Out << "[sys.mock] Overwritten nativeWifiConnect with mock implementation." << Terminal.EOL;
+}

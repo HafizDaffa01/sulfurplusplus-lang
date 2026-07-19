@@ -1,0 +1,25 @@
+// std/string.sfpp
+export this as std/string;
+
+// String manipulation — all backed by native builtins
+
+expose "str_trim" as trim;        // trim(s) -> str
+expose "str_trimleft" as trimLeft;    // trimLeft(s) -> str
+expose "str_trimright" as trimRight;   // trimRight(s) -> str
+expose "str_upper" as toUpper;       // toUpper(s) -> str
+expose "str_lower" as toLower;       // toLower(s) -> str
+expose "str_startswith" as startsWith;  // startsWith(s, prefix) -> bool
+expose "str_endswith" as endsWith;    // endsWith(s, suffix) -> bool
+expose "str_contains" as contains;    // contains(s, sub) -> bool
+expose "str_replace" as replace;     // replace(s, from, to) -> str
+expose "str_split" as split;       // split(s, delim) -> list
+expose "str_join" as join;        // join(list, delim) -> str
+expose "str_repeat" as repeat;      // repeat(s, n) -> str
+expose "str_indexof" as indexOf;     // indexOf(s, sub) -> int (-1 if not found)
+expose "str_slice" as slice;       // slice(s, start, end?) -> str
+expose "str_padleft" as padLeft;     // padLeft(s, width, char?) -> str
+expose "str_padright" as padRight;    // padRight(s, width, char?) -> str
+expose "str_reverse" as reverse;     // reverse(s) -> str
+expose "str_isdigit" as isDigit;     // isDigit(s) -> bool
+expose "str_isalpha" as isAlpha;     // isAlpha(s) -> bool
+expose "str_isalphanum" as isAlphaNum;  // isAlphaNum(s) -> bool

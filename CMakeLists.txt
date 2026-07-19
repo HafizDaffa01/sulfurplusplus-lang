@@ -4,7 +4,6 @@ project(Sulfur++ LANGUAGES CXX C)
 # -------------------------------------------------
 # LLVM / JIT support (optional)
 # -------------------------------------------------
-# Force LLVM backend off to avoid compilation issues
 option(USE_LLVM "Enable LLVM backend / JIT" OFF)
 set(USE_LLVM OFF CACHE BOOL "Force LLVM off" FORCE)
 
@@ -16,13 +15,48 @@ set(CMAKE_CXX_EXTENSIONS ON)
 # -------------------------------------------------
 # Find LLVM early so we can adjust compiler flags
 # -------------------------------------------------
+set(LLVM_LIBS "")
+set(CLEAN_LLVM_INCLUDES "")
+
 if(USE_LLVM)
     find_package(LLVM REQUIRED CONFIG)
     message(STATUS "Found LLVM ${LLVM_PACKAGE_VERSION}")
-    # NOTE: We intentionally do NOT add -fno-exceptions here.
-    # Sulfur++ core code uses C++ exceptions heavily.
-    # LLVM 21 ships as a shared library (libLLVM-21.so) which is
-    # ABI-compatible with exception-enabled callers.
+
+    llvm_map_components_to_libnames(LLVM_LIBS
+        core support irreader
+        executionengine orcjit
+        nativecodegen
+        passes
+        target
+        mc mca
+        aarch64asmparser asmparser
+    )
+
+    # Filter out Termux host system headers from include dirs
+    foreach(dir ${LLVM_INCLUDE_DIRS})
+        if(NOT dir MATCHES "com.termux")
+            list(APPEND CLEAN_LLVM_INCLUDES ${dir})
+        endif()
+    endforeach()
+
+    # Clean up imported LLVM target properties to prevent propagating bad paths
+    foreach(lib ${LLVM_LIBS})
+        if(TARGET ${lib})
+            get_target_property(inc_dirs ${lib} INTERFACE_INCLUDE_DIRECTORIES)
+            if(inc_dirs)
+                set(clean_inc_dirs "")
+                foreach(dir ${inc_dirs})
+                    if(NOT dir MATCHES "com.termux")
+                        list(APPEND clean_inc_dirs ${dir})
+                    endif()
+                endforeach()
+                set_target_properties(${lib} PROPERTIES
+                    INTERFACE_INCLUDE_DIRECTORIES "${clean_inc_dirs}")
+            endif()
+        endif()
+    endforeach()
+
+    message(STATUS "LLVM libs: ${LLVM_LIBS}")
 endif()
 
 # -------------------------------------------------
@@ -33,7 +67,6 @@ if(MSVC)
     add_compile_options(/Zc:__cplusplus /Zc:preprocessor)
 else()
     if(USE_LLVM)
-        # With LLVM: no LTO (conflicts with LLVM's own LTO), keep O3
         add_compile_options(-Wall -Wextra -O3)
     else()
         add_compile_options(-Wall -Wextra -O3 -flto)
@@ -53,73 +86,33 @@ set(CORE_SOURCES
     src/core/value.cpp
 )
 
-set(LLVM_SOURCES
-    src/llvm/llvm_ir_builder.cpp
-    src/llvm/llvm_aot.cpp
-)
+set(ALL_CORE_SOURCES ${CORE_SOURCES})
 
-set(COMBUST_SOURCES
-    src/tools/combust.cpp
-    ${CORE_SOURCES}
-)
-
-# Include LLVM sources only when LLVM backend is enabled
 if(USE_LLVM)
-    list(APPEND COMBUST_SOURCES ${LLVM_SOURCES})
+    list(APPEND ALL_CORE_SOURCES
+        src/llvm/llvm_ir_builder.cpp
+        src/llvm/llvm_aot.cpp
+    )
+endif()
+
+# -------------------------------------------------
+# sulfur shared library (core runtime)
+# -------------------------------------------------
+add_library(sulfur SHARED ${ALL_CORE_SOURCES})
+target_include_directories(sulfur PUBLIC include)
+
+if(USE_LLVM)
+    target_include_directories(sulfur PUBLIC ${CLEAN_LLVM_INCLUDES})
+    target_link_libraries(sulfur PUBLIC ${LLVM_LIBS})
+    target_compile_definitions(sulfur PUBLIC ENABLE_LLVM)
 endif()
 
 # -------------------------------------------------
 # combust executable
 # -------------------------------------------------
-add_executable(combust ${COMBUST_SOURCES})
+add_executable(combust src/tools/combust.cpp src/tools/compiler.cpp)
 target_include_directories(combust PRIVATE include)
-
-# -------------------------------------------------
-# LLVM linkage
-# -------------------------------------------------
-if(USE_LLVM)
-    # Components needed: core IR + ORC JIT + native codegen + optimization passes
-    llvm_map_components_to_libnames(llvm_libs
-        core support irreader
-        executionengine orcjit
-        nativecodegen
-        passes        # New Pass Manager (LLVM 14+)
-        target
-        mc mca
-        aarch64asmparser asmparser
-    )
-
-    # Filter out Termux host system headers from include dirs
-    set(clean_llvm_includes "")
-    foreach(dir ${LLVM_INCLUDE_DIRS})
-        if(NOT dir MATCHES "com.termux")
-            list(APPEND clean_llvm_includes ${dir})
-        endif()
-    endforeach()
-
-    # Clean up imported LLVM target properties to prevent propagating bad paths
-    foreach(lib ${llvm_libs})
-        if(TARGET ${lib})
-            get_target_property(inc_dirs ${lib} INTERFACE_INCLUDE_DIRECTORIES)
-            if(inc_dirs)
-                set(clean_inc_dirs "")
-                foreach(dir ${inc_dirs})
-                    if(NOT dir MATCHES "com.termux")
-                        list(APPEND clean_inc_dirs ${dir})
-                    endif()
-                endforeach()
-                set_target_properties(${lib} PROPERTIES
-                    INTERFACE_INCLUDE_DIRECTORIES "${clean_inc_dirs}")
-            endif()
-        endif()
-    endforeach()
-
-    target_include_directories(combust PRIVATE ${clean_llvm_includes})
-    target_link_libraries(combust PRIVATE ${llvm_libs})
-    target_compile_definitions(combust PRIVATE ENABLE_LLVM)
-
-    message(STATUS "LLVM libs: ${llvm_libs}")
-endif()
+target_link_libraries(combust PRIVATE sulfur)
 
 # -------------------------------------------------
 # Copy stdlib
@@ -132,18 +125,6 @@ add_custom_command(TARGET combust POST_BUILD
 )
 
 # -------------------------------------------------
-# fuse package manager
-# -------------------------------------------------
-add_executable(fuse src/tools/fuse.cpp)
-target_include_directories(fuse PRIVATE include)
-
-# -------------------------------------------------
-# ignitor tool
-# -------------------------------------------------
-add_executable(ignitor src/tools/ignitor.cpp)
-target_include_directories(ignitor PRIVATE include)
-
-# -------------------------------------------------
 # Convenience targets
 # -------------------------------------------------
 add_custom_target(run
@@ -151,18 +132,4 @@ add_custom_target(run
     DEPENDS combust
     WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
     COMMENT "Launching Sulfur++ REPL..."
-)
-
-add_custom_target(example
-    COMMAND $<TARGET_FILE:combust> examples/benchmarks/jit_test.sfpp
-    DEPENDS combust
-    WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
-    COMMENT "Running jit_test.sfpp example..."
-)
-
-add_custom_target(benchmark
-    COMMAND $<TARGET_FILE:combust> examples/benchmarks/fib_jit.sfpp
-    DEPENDS combust
-    WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
-    COMMENT "Running JIT fibonacci benchmark..."
 )

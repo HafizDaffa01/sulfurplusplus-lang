@@ -1,35 +1,40 @@
-// RuntimeAPI – provides runtime diagnostics for Sulfur++ programs
-// This file resides in std/runtime.sfpp
+// std/runtime.sfpp
+// Sulfur++ Runtime Information API
+// Provides information about the currently executing runtime environment.
 
-module RuntimeAPI {
-    // Timestamp (in milliseconds since Unix epoch) when the program started.
-    const startTime: i64 = builtin.start_time();
+export this as std/runtime;
+import std/time as time;
 
-    // Return the elapsed time in milliseconds since the program started.
-    pub fn elapsed_ms() -> i64 {
-        return builtin.current_time() - startTime;
+class RuntimeAPI {
+    startTime;
+
+    fn init() {
+        // Record the time the module was initialized
+        this.startTime = time.micros();
     }
 
-    // Return the elapsed time as a human‑readable string "HH:MM:SS.mmm".
-    pub fn elapsed_pretty() -> string {
-        let ms = elapsed_ms();
-        let seconds = ms / 1000;
-        let minutes = seconds / 60;
-        let hours = minutes / 60;
-        let remainder_ms = ms % 1000;
-        let remainder_sec = seconds % 60;
-        let remainder_min = minutes % 60;
-        return fmt("{0:02}:{1:02}:{2:02}.{3:03}", hours, remainder_min, remainder_sec, remainder_ms);
+    // Returns the uptime in milliseconds
+    fn uptimeMillis() {
+        var current = time.micros();
+        return (current - this.startTime) / 1000;
     }
 
-    // Get the current process ID (if supported by the runtime).
-    pub fn pid() -> i32 {
-        return builtin.process_id();
+    // Returns the uptime in seconds
+    fn uptimeSeconds() {
+        var current = time.micros();
+        return (current - this.startTime) / 1000000.0;
+    }
+    
+    // Returns the current execution engine
+    fn getEngineName() {
+        return "combust";
     }
 
-    // EOF – signals end of file.
-    pub fn EOF() -> never {
-        builtin.print("EOF reached! Terminating program.");
-        builtin.fatal_error(500, "FE_RUNTIME_500: EOF called, last line active were ...");
+    // Returns the language name
+    fn getLanguage() {
+        return "Sulfur++";
     }
 }
+
+// Global instance for easy access
+var Runtime = new RuntimeAPI();

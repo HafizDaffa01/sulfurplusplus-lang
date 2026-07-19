@@ -39,6 +39,14 @@ private:
     // Registry for modules that export themselves
     std::unordered_map<std::string, ValuePtr> exportedModules_;
 
+    // Native module support (C API modules)
+    struct NativeModule {
+        std::string name;
+        void* handle;  // dlopen handle
+        ValuePtr moduleDict;
+    };
+    std::unordered_map<std::string, NativeModule> nativeModules_;
+
     // Alias registry: maps alias name -> {paramCount, expansionTemplate}
     struct AliasEntry {
         std::vector<std::string> paramNames;
@@ -68,6 +76,7 @@ private:
     void execUnsafe(const UnsafeStmt& s);
     void execDefer(const DeferStmt& s);
     void execTryCatch(const TryCatchStmt& s);
+    void execMatch(const MatchStmt& s);
 
     // Evaluate expression
     ValuePtr evalExpr(const Expr& e);
@@ -108,6 +117,13 @@ private:
 
     // Standard library / built-in functions
     void registerBuiltins();
+    
+    // Native module loading (C API)
+    ValuePtr loadNativeModule(const std::string& name, const std::string& path);
+    ValuePtr initNativeModule(const std::string& name, void* handle);
+    void unloadNativeModule(const std::string& name);
+    bool tryLoadNativeModule(const std::string& pkgPath, const std::string& alias, 
+                             bool noLibName, const std::function<void(ValuePtr)>& defineExports);
 
     // Output helpers
     void print(const std::string& s);

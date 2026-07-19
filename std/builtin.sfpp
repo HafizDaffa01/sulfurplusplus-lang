@@ -1,0 +1,24 @@
+export this as std/builtin;
+
+expose "delay" as delay;
+expose "delayMilliseconds" as delayMilliseconds;
+expose "delayMicroseconds" as delayMicroseconds;
+expose "typeOf" as typeOf;
+expose "type" as type;
+expose "toStr" as toStr;
+expose "toInt" as toInt;
+expose "toFloat" as toFloat;
+expose "toBool" as toBool;
+expose "len" as len;
+expose "range" as range;
+expose "exit" as exit;
+expose "assert" as assert;
+expose "ord" as ord;
+expose "chr" as chr;
+expose "read" as read;
+expose "get" as get;
+expose "now" as now;
+
+expose "Terminal" as Terminal;
+expose "TIO" as TIO;
+import std/alias --use=[NOLIBNAME];

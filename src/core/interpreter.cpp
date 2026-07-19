@@ -14,6 +14,9 @@
 #include <iomanip>
 #include <thread>
 #include <chrono>
+#include <cstdio>
+#include <cstring>
+#include <dlfcn.h>
 #include "diagnostic.hpp"
 
 #ifdef ENABLE_LLVM
@@ -98,6 +101,107 @@ std::string Interpreter::readLine() {
   return line;
 }
 
+// Try to load a native module (.so/.dylib/.dll)
+// Returns true if successfully loaded, false otherwise
+bool Interpreter::tryLoadNativeModule(const std::string& pkgName, 
+                                      const std::string& alias,
+                                      bool noLibName,
+                                      const std::function<void(ValuePtr)>& defineModuleExports) {
+    // Check if it looks like a native module path
+    bool isNative = false;
+    std::string nativePath = pkgName;
+    
+    // Check for native module extensions
+    if (pkgName.length() >= 3) {
+        std::string ext = pkgName.substr(pkgName.length() - 3);
+        if (ext == ".so" || ext == ".dylib" || ext == ".dll") {
+            isNative = true;
+        }
+    }
+    
+    if (!isNative && pkgName.length() >= 5) {
+        std::string ext = pkgName.substr(pkgName.length() - 5);
+        if (ext == ".so.1" || ext == ".so.2" || ext == ".so.3") {
+            isNative = true;
+        }
+    }
+    
+    // If no native extension, try adding .so
+    if (!isNative) {
+        nativePath = pkgName + ".so";
+        isNative = true;
+    }
+    
+// Try to find the library file
+    // Get the executable directory for relative paths
+    std::string exeDir = "";
+    try {
+        exeDir = std::filesystem::current_path().string();
+    } catch (...) {}
+    
+    std::vector<std::string> searchPaths = {
+        nativePath,                              // Direct path (absolute or relative to cwd)
+        "./" + nativePath,                       // Current directory
+        "../" + nativePath,                      // Parent directory
+        "examples/" + nativePath,                // examples/ relative to cwd
+        "build/examples/" + nativePath,          // build/examples/ relative to cwd
+        "build/std/" + nativePath,               // build/std/ relative to cwd
+        "build/" + nativePath,                   // build/ relative to cwd
+        "src/stdlib/" + nativePath,              // src/stdlib/ relative to cwd
+        "packages/" + nativePath                 // packages/ relative to cwd
+    };
+    
+    trace("tryLoadNativeModule: looking for '" + nativePath + "' in " + std::to_string(searchPaths.size()) + " paths");
+    
+    void* handle = nullptr;
+    std::string loadedPath;
+    
+    for (const auto& path : searchPaths) {
+        trace("  Trying: " + path);
+        handle = dlopen(path.c_str(), RTLD_NOW | RTLD_LOCAL);
+        if (handle) {
+            loadedPath = path;
+            trace("  Found at: " + loadedPath);
+            break;
+        } else {
+            trace("  Not found: " + path + " (" + dlerror() + ")");
+        }
+    }
+    
+    if (!handle) {
+        // Not found, return false to let normal .sfpp loading handle it
+        return false;
+    }
+    
+    // Look for init function
+    using InitFunc = ValuePtr (*)(Interpreter*);
+    InitFunc init = reinterpret_cast<InitFunc>(dlsym(handle, "sulfurpp_module_init"));
+    if (!init) {
+        dlclose(handle);
+        throw RuntimeError("Native module '" + pkgName + "' missing sulfurpp_module_init function");
+    }
+    
+    // Call init
+    ValuePtr moduleDict = init(this);
+    if (!moduleDict->isDict()) {
+        dlclose(handle);
+        throw RuntimeError("Native module '" + pkgName + "' init must return a dict");
+    }
+    
+    // Store module info
+    NativeModule mod;
+    mod.name = alias;
+    mod.handle = handle;
+    mod.moduleDict = moduleDict;
+    nativeModules_[alias] = std::move(mod);
+    
+    // Export
+    defineModuleExports(moduleDict);
+    exportedModules_[alias] = moduleDict;
+    
+    return true;
+}
+
 
 
 // --- execStmt
@@ -152,6 +256,8 @@ void Interpreter::execStmt(const Stmt &s) {
           execDefer(node);
         else if constexpr (std::is_same_v<T, TryCatchStmt>)
           execTryCatch(node);
+        else if constexpr (std::is_same_v<T, MatchStmt>)
+          execMatch(node);
       },
       s.data);
 }
@@ -533,6 +639,17 @@ void Interpreter::execImport(const ImportStmt &s) {
     return;
   }
 
+  // Try native module first (.so/.dylib/.dll)
+  if (tryLoadNativeModule(s.pkg, alias, noLibName, defineModuleExports)) {
+    trace("Native module loaded: " + s.pkg);
+    return;
+  }
+
+  // Try native module with .so extension
+  if (tryLoadNativeModule(s.pkg + ".so", alias, noLibName, defineModuleExports)) {
+    trace("Native module loaded: " + s.pkg + ".so");
+    return;
+  }
 
   std::string path = s.pkg;
   if (path.length() < 5 || path.substr(path.length() - 5) != ".sfpp") {
@@ -584,7 +701,6 @@ void Interpreter::execImport(const ImportStmt &s) {
       }
     }
   }
-
 
 
   std::ostringstream ss;
@@ -750,6 +866,23 @@ void Interpreter::execTryCatch(const TryCatchStmt &s) {
       execBlock(*std::get_if<BlockStmt>(&s.catchBody->data), catchEnv);
     }
   }
+}
+
+void Interpreter::execMatch(const MatchStmt &s) {
+  auto val = evalExpr(*s.value);
+  for (auto &c : s.cases) {
+    if (c.pattern == nullptr) {
+      // Default/wildcard case
+      execStmt(*c.body);
+      return;
+    }
+    auto pat = evalExpr(*c.pattern);
+    if (val.equals(pat)) {
+      execStmt(*c.body);
+      return;
+    }
+  }
+  throw RuntimeError("No matching case in match expression", s.line);
 }
 
 // --- evalExpr
@@ -2235,23 +2368,6 @@ void Interpreter::registerBuiltins() {
     return makeList(lv);
   });
 
-  // Complex constructors & utils
-  defNative("complex", [](std::vector<ValuePtr> a) -> ValuePtr {
-    double real = a.size() > 0 ? a[0].asFloat() : 0.0;
-    double imag = a.size() > 1 ? a[1].asFloat() : 0.0;
-    return makeComplex(std::complex<double>(real, imag));
-  });
-  defNative("real", [](std::vector<ValuePtr> a) -> ValuePtr {
-    if (a.empty()) return makeFloat(0.0);
-    if (a[0].isComplex()) return makeFloat(a[0].asComplex().real());
-    return makeFloat(a[0].asFloat());
-  });
-  defNative("imag", [](std::vector<ValuePtr> a) -> ValuePtr {
-    if (a.empty()) return makeFloat(0.0);
-    if (a[0].isComplex()) return makeFloat(a[0].asComplex().imag());
-    return makeFloat(0.0);
-  });
-
   // Math functions
   defNative("abs", [](std::vector<ValuePtr> a) -> ValuePtr {
     if (a.empty()) return makeInt(0);
@@ -2344,76 +2460,6 @@ void Interpreter::registerBuiltins() {
   });
   defNative("atan2", [](std::vector<ValuePtr> a) -> ValuePtr {
       return makeFloat(std::atan2(a.size() < 1 ? 0 : a[0].asFloat(), a.size() < 2 ? 0 : a[1].asFloat()));
-  });
-
-  // Matrix functions
-  defNative("matrix_add", [this](std::vector<ValuePtr> a) -> ValuePtr {
-      if (a.size() < 2) throw MathError("matrix_add requires 2 arguments");
-      auto m1 = a[0];
-      auto m2 = a[1];
-      if (!m1.isList() || !m2.isList()) throw MathError("matrix_add arguments must be matrices");
-      auto& lst1 = m1.asList()->elements;
-      auto& lst2 = m2.asList()->elements;
-      if (lst1.size() != lst2.size()) throw MathError("Matrix row dimensions mismatch");
-      auto res = std::make_shared<ListValue>();
-      for (size_t i = 0; i < lst1.size(); i++) {
-          if (!lst1[i].isList() || !lst2[i].isList()) throw MathError("Matrix row must be a list");
-          auto& row1 = lst1[i].asList()->elements;
-          auto& row2 = lst2[i].asList()->elements;
-          if (row1.size() != row2.size()) throw MathError("Matrix column dimensions mismatch");
-          auto newRow = std::make_shared<ListValue>();
-          for (size_t j = 0; j < row1.size(); j++) {
-              newRow->elements.push_back(this->applyBinaryArith("+", row1[j], row2[j], 0));
-          }
-          res->elements.push_back(makeList(newRow));
-      }
-      return makeList(res);
-  });
-
-  defNative("matrix_mul", [this](std::vector<ValuePtr> a) -> ValuePtr {
-      if (a.size() < 2) throw MathError("matrix_mul requires 2 arguments");
-      auto m1 = a[0];
-      auto m2 = a[1];
-      if (!m1.isList() || !m2.isList()) throw MathError("matrix_mul arguments must be matrices");
-      auto& lst1 = m1.asList()->elements;
-      auto& lst2 = m2.asList()->elements;
-      size_t rows1 = lst1.size();
-      size_t cols1 = rows1 > 0 ? (lst1[0].isList() ? lst1[0].asList()->elements.size() : 0) : 0;
-      size_t rows2 = lst2.size();
-      size_t cols2 = rows2 > 0 ? (lst2[0].isList() ? lst2[0].asList()->elements.size() : 0) : 0;
-      if (cols1 != rows2) throw MathError("Matrix inner dimensions must agree");
-      auto res = std::make_shared<ListValue>();
-      for (size_t i = 0; i < rows1; i++) {
-          auto newRow = std::make_shared<ListValue>();
-          for (size_t j = 0; j < cols2; j++) {
-              ValuePtr sum = makeFloat(0.0);
-              for (size_t k = 0; k < cols1; k++) {
-                  ValuePtr v1 = lst1[i].asList()->elements[k];
-                  ValuePtr v2 = lst2[k].asList()->elements[j];
-                  ValuePtr prod = this->applyBinaryArith("*", v1, v2, 0);
-                  sum = this->applyBinaryArith("+", sum, prod, 0);
-              }
-              newRow->elements.push_back(sum);
-          }
-          res->elements.push_back(makeList(newRow));
-      }
-      return makeList(res);
-  });
-
-  defNative("matrix_transpose", [](std::vector<ValuePtr> a) -> ValuePtr {
-      if (a.empty() || !a[0].isList()) throw MathError("matrix_transpose requires a matrix");
-      auto& lst = a[0].asList()->elements;
-      size_t rows = lst.size();
-      size_t cols = rows > 0 ? (lst[0].isList() ? lst[0].asList()->elements.size() : 0) : 0;
-      auto res = std::make_shared<ListValue>();
-      for (size_t j = 0; j < cols; j++) {
-          auto newRow = std::make_shared<ListValue>();
-          for (size_t i = 0; i < rows; i++) {
-              newRow->elements.push_back(lst[i].asList()->elements[j]);
-          }
-          res->elements.push_back(makeList(newRow));
-      }
-      return makeList(res);
   });
 
   defNative("matrix_scale", [this](std::vector<ValuePtr> a) -> ValuePtr {
@@ -2562,7 +2608,6 @@ void Interpreter::registerBuiltins() {
 
   builtins->set("RUNTIME_VERSION", makeStr(__RUNTIME_VERSION__));
   builtins->set("SULFUR_VERSION", makeStr(__SULFUR_VERSION__));
-  builtins->set("FUSE_VERSION", makeStr(__FUSE_VERSION__));
   builtins->set("COMBUST_VERSION", makeStr(__COMBUST_VERSION__));
   builtins->set("BUILD_MODE", makeStr("debug"));
   builtins->set("DEBUG_MODE", makeBool(false));
@@ -3547,7 +3592,215 @@ void Interpreter::registerBuiltins() {
   });
   defNative("sys_process_exec", [](std::vector<ValuePtr> args) -> ValuePtr {
     if (args.empty()) return makeStr("");
-    return makeStr("Executed: " + args[0]->toString());
+    std::string cmd = args[0]->toString();
+    std::array<char, 4096> buffer;
+    std::string result;
+    FILE* pipe = popen(cmd.c_str(), "r");
+    if (!pipe) throw RuntimeError("Failed to execute command: " + cmd);
+    while (fgets(buffer.data(), buffer.size(), pipe) != nullptr) {
+      result += buffer.data();
+    }
+    pclose(pipe);
+    if (!result.empty() && result.back() == '\n')
+      result.pop_back();
+    return makeStr(result);
+  });
+
+  // ==========================================
+  // FFI: Foreign Function Interface
+  // ==========================================
+  defNative("ffi_dlopen", [](std::vector<ValuePtr> args) -> ValuePtr {
+    if (args.empty()) throw RuntimeError("ffi_dlopen requires a library path");
+    std::string path = args[0]->toString();
+    void* handle = dlopen(path.c_str(), RTLD_NOW | RTLD_LOCAL);
+    if (!handle) {
+      std::string err = dlerror();
+      throw RuntimeError("ffi_dlopen failed: " + err);
+    }
+    return makeRawPtr(handle);
+  });
+
+  defNative("ffi_dlsym", [](std::vector<ValuePtr> args) -> ValuePtr {
+    if (args.size() < 2) throw RuntimeError("ffi_dlsym requires handle and symbol name");
+    if (!args[0]->isPtr()) throw RuntimeError("ffi_dlsym: first arg must be a library handle");
+    void* handle = args[0]->asPtr()->rawPtr;
+    std::string symbol = args[1]->toString();
+    dlerror(); // clear
+    void* sym = dlsym(handle, symbol.c_str());
+    char* err = dlerror();
+    if (err) throw RuntimeError("ffi_dlsym: symbol '" + symbol + "' not found: " + std::string(err));
+    return makeRawPtr(sym);
+  });
+
+  defNative("ffi_dlclose", [](std::vector<ValuePtr> args) -> ValuePtr {
+    if (args.empty()) throw RuntimeError("ffi_dlclose requires a handle");
+    if (!args[0]->isPtr()) throw RuntimeError("ffi_dlclose: arg must be a library handle");
+    void* handle = args[0]->asPtr()->rawPtr;
+    dlclose(handle);
+    return makeNull();
+  });
+
+  // ffi_call(fn_ptr, args_list, ret_type) -> value
+  // ret_type: "void", "int", "float", "ptr", "str"
+  defNative("ffi_call", [](std::vector<ValuePtr> args) -> ValuePtr {
+    if (args.size() < 3) throw RuntimeError("ffi_call requires fn_ptr, args_list, ret_type");
+    if (!args[0]->isPtr()) throw RuntimeError("ffi_call: first arg must be a function pointer");
+    void* fnPtr = args[0]->asPtr()->rawPtr;
+    if (!fnPtr) throw RuntimeError("ffi_call: null function pointer");
+
+    auto argList = args[1]->asList();
+    std::string retType = args[2]->toString();
+
+    // Convert Sulfur++ args to raw C values
+    std::vector<int64_t> intArgs;
+    std::vector<double> floatArgs;
+    std::vector<std::string> strStore; // keep strings alive
+    std::vector<const char*> cStrArgs;
+
+    for (auto& a : argList->elements) {
+      if (a.isInt()) {
+        intArgs.push_back(a.asInt());
+        cStrArgs.push_back(nullptr);
+      } else if (a.isFloat()) {
+        intArgs.push_back(0); // placeholder for xmm
+        floatArgs.push_back(a.asFloat());
+        cStrArgs.push_back(nullptr);
+      } else if (a.isStr()) {
+        strStore.push_back(a.asStr());
+        intArgs.push_back((int64_t)(uintptr_t)strStore.back().c_str());
+        cStrArgs.push_back(strStore.back().c_str());
+      } else if (a.isNull()) {
+        intArgs.push_back(0);
+        cStrArgs.push_back(nullptr);
+      } else if (a.isPtr()) {
+        intArgs.push_back((int64_t)(uintptr_t)a.asPtr()->rawPtr);
+        cStrArgs.push_back(nullptr);
+      } else {
+        intArgs.push_back(0);
+        cStrArgs.push_back(nullptr);
+      }
+    }
+
+    size_t nArgs = argList->elements.size();
+
+    if (retType == "void") {
+      switch (nArgs) {
+        case 0: { auto f = reinterpret_cast<void(*)()>(fnPtr); f(); break; }
+        case 1: { auto f = reinterpret_cast<void(*)(int64_t)>(fnPtr); f(intArgs[0]); break; }
+        case 2: { auto f = reinterpret_cast<void(*)(int64_t,int64_t)>(fnPtr); f(intArgs[0], intArgs[1]); break; }
+        case 3: { auto f = reinterpret_cast<void(*)(int64_t,int64_t,int64_t)>(fnPtr); f(intArgs[0], intArgs[1], intArgs[2]); break; }
+        case 4: { auto f = reinterpret_cast<void(*)(int64_t,int64_t,int64_t,int64_t)>(fnPtr); f(intArgs[0], intArgs[1], intArgs[2], intArgs[3]); break; }
+        case 5: { auto f = reinterpret_cast<void(*)(int64_t,int64_t,int64_t,int64_t,int64_t)>(fnPtr); f(intArgs[0], intArgs[1], intArgs[2], intArgs[3], intArgs[4]); break; }
+        case 6: { auto f = reinterpret_cast<void(*)(int64_t,int64_t,int64_t,int64_t,int64_t,int64_t)>(fnPtr); f(intArgs[0], intArgs[1], intArgs[2], intArgs[3], intArgs[4], intArgs[5]); break; }
+        default: throw RuntimeError("ffi_call: too many arguments (max 6 for void)");
+      }
+      return makeNull();
+    } else if (retType == "int") {
+      int64_t result = 0;
+      switch (nArgs) {
+        case 0: { auto f = reinterpret_cast<int64_t(*)()>(fnPtr); result = f(); break; }
+        case 1: { auto f = reinterpret_cast<int64_t(*)(int64_t)>(fnPtr); result = f(intArgs[0]); break; }
+        case 2: { auto f = reinterpret_cast<int64_t(*)(int64_t,int64_t)>(fnPtr); result = f(intArgs[0], intArgs[1]); break; }
+        case 3: { auto f = reinterpret_cast<int64_t(*)(int64_t,int64_t,int64_t)>(fnPtr); result = f(intArgs[0], intArgs[1], intArgs[2]); break; }
+        case 4: { auto f = reinterpret_cast<int64_t(*)(int64_t,int64_t,int64_t,int64_t)>(fnPtr); result = f(intArgs[0], intArgs[1], intArgs[2], intArgs[3]); break; }
+        case 5: { auto f = reinterpret_cast<int64_t(*)(int64_t,int64_t,int64_t,int64_t,int64_t)>(fnPtr); result = f(intArgs[0], intArgs[1], intArgs[2], intArgs[3], intArgs[4]); break; }
+        case 6: { auto f = reinterpret_cast<int64_t(*)(int64_t,int64_t,int64_t,int64_t,int64_t,int64_t)>(fnPtr); result = f(intArgs[0], intArgs[1], intArgs[2], intArgs[3], intArgs[4], intArgs[5]); break; }
+        default: throw RuntimeError("ffi_call: too many arguments (max 6 for int)");
+      }
+      return makeInt(result);
+    } else if (retType == "float") {
+      double result = 0;
+      switch (nArgs) {
+        case 0: { auto f = reinterpret_cast<double(*)()>(fnPtr); result = f(); break; }
+        case 1: { auto f = reinterpret_cast<double(*)(int64_t)>(fnPtr); result = f(intArgs[0]); break; }
+        case 2: { auto f = reinterpret_cast<double(*)(int64_t,int64_t)>(fnPtr); result = f(intArgs[0], intArgs[1]); break; }
+        case 3: { auto f = reinterpret_cast<double(*)(int64_t,int64_t,int64_t)>(fnPtr); result = f(intArgs[0], intArgs[1], intArgs[2]); break; }
+        case 4: { auto f = reinterpret_cast<double(*)(int64_t,int64_t,int64_t,int64_t)>(fnPtr); result = f(intArgs[0], intArgs[1], intArgs[2], intArgs[3]); break; }
+        default: throw RuntimeError("ffi_call: too many arguments for float return");
+      }
+      return makeFloat(result);
+    } else if (retType == "ptr") {
+      void* result = nullptr;
+      switch (nArgs) {
+        case 0: { auto f = reinterpret_cast<void*(*)()>(fnPtr); result = f(); break; }
+        case 1: { auto f = reinterpret_cast<void*(*)(int64_t)>(fnPtr); result = f(intArgs[0]); break; }
+        case 2: { auto f = reinterpret_cast<void*(*)(int64_t,int64_t)>(fnPtr); result = f(intArgs[0], intArgs[1]); break; }
+        case 3: { auto f = reinterpret_cast<void*(*)(int64_t,int64_t,int64_t)>(fnPtr); result = f(intArgs[0], intArgs[1], intArgs[2]); break; }
+        default: throw RuntimeError("ffi_call: too many arguments for ptr return");
+      }
+      if (result == nullptr) return makeNull();
+      return makeRawPtr(result);
+    } else if (retType == "str") {
+      const char* result = nullptr;
+      switch (nArgs) {
+        case 0: { auto f = reinterpret_cast<const char*(*)()>(fnPtr); result = f(); break; }
+        case 1: { auto f = reinterpret_cast<const char*(*)(int64_t)>(fnPtr); result = f(intArgs[0]); break; }
+        case 2: { auto f = reinterpret_cast<const char*(*)(int64_t,int64_t)>(fnPtr); result = f(intArgs[0], intArgs[1]); break; }
+        default: throw RuntimeError("ffi_call: too many arguments for str return");
+      }
+      if (result == nullptr) return makeStr("");
+      return makeStr(std::string(result));
+    } else {
+      throw RuntimeError("ffi_call: unknown return type '" + retType + "'. Use: void, int, float, ptr, str");
+    }
+  });
+
+  // ffi_mem_read(ptr, offset) -> int
+  defNative("ffi_mem_read", [](std::vector<ValuePtr> args) -> ValuePtr {
+    if (args.size() < 2) throw RuntimeError("ffi_mem_read requires ptr and offset");
+    if (!args[0]->isPtr()) throw RuntimeError("ffi_mem_read: first arg must be a pointer");
+    void* base = args[0]->asPtr()->rawPtr;
+    int64_t offset = args[1]->asInt();
+    int64_t* addr = reinterpret_cast<int64_t*>((char*)base + offset);
+    return makeInt(*addr);
+  });
+
+  // ffi_mem_write(ptr, offset, value)
+  defNative("ffi_mem_write", [](std::vector<ValuePtr> args) -> ValuePtr {
+    if (args.size() < 3) throw RuntimeError("ffi_mem_write requires ptr, offset, value");
+    if (!args[0]->isPtr()) throw RuntimeError("ffi_mem_write: first arg must be a pointer");
+    void* base = args[0]->asPtr()->rawPtr;
+    int64_t offset = args[1]->asInt();
+    int64_t val = args[2]->asInt();
+    int64_t* addr = reinterpret_cast<int64_t*>((char*)base + offset);
+    *addr = val;
+    return makeNull();
+  });
+
+  // ffi_str_read(ptr) -> str (read null-terminated string)
+  defNative("ffi_str_read", [](std::vector<ValuePtr> args) -> ValuePtr {
+    if (args.empty()) throw RuntimeError("ffi_str_read requires a pointer");
+    if (!args[0]->isPtr()) throw RuntimeError("ffi_str_read: arg must be a pointer");
+    const char* str = reinterpret_cast<const char*>(args[0]->asPtr()->rawPtr);
+    if (!str) return makeStr("");
+    return makeStr(std::string(str));
+  });
+
+  // ffi_str_write(ptr, offset, str) -> write string into C memory
+  defNative("ffi_str_write", [](std::vector<ValuePtr> args) -> ValuePtr {
+    if (args.size() < 3) throw RuntimeError("ffi_str_write requires ptr, offset, string");
+    if (!args[0]->isPtr()) throw RuntimeError("ffi_str_write: first arg must be a pointer");
+    void* base = args[0]->asPtr()->rawPtr;
+    int64_t offset = args[1]->asInt();
+    std::string str = args[2]->toString();
+    char* dest = (char*)base + offset;
+    memcpy(dest, str.c_str(), str.size() + 1);
+    return makeNull();
+  });
+
+  // ffi_sizeof(type_name) -> int
+  defNative("ffi_sizeof", [](std::vector<ValuePtr> args) -> ValuePtr {
+    if (args.empty()) throw RuntimeError("ffi_sizeof requires a type name");
+    std::string type = args[0]->toString();
+    if (type == "int" || type == "int64") return makeInt(sizeof(int64_t));
+    if (type == "int32" || type == "int") return makeInt(sizeof(int32_t));
+    if (type == "int16" || type == "short") return makeInt(sizeof(int16_t));
+    if (type == "int8" || type == "char") return makeInt(sizeof(int8_t));
+    if (type == "float" || type == "float64" || type == "double") return makeInt(sizeof(double));
+    if (type == "float32") return makeInt(sizeof(float));
+    if (type == "ptr" || type == "pointer") return makeInt(sizeof(void*));
+    if (type == "bool") return makeInt(sizeof(bool));
+    throw RuntimeError("ffi_sizeof: unknown type '" + type + "'");
   });
 
   // Low-level native used by the sfpp-side Alias class (src/stdlib/alias.sfpp)
@@ -3602,4 +3855,58 @@ void Interpreter::registerBuiltins() {
   });
 
   builtinsRegistry_ = makeDict(builtins);
+}
+
+// ==========================================
+// Native Module Loading (C API)
+// ==========================================
+
+ValuePtr Interpreter::loadNativeModule(const std::string& name, const std::string& path) {
+  // Load shared library
+  void* handle = dlopen(path.c_str(), RTLD_NOW | RTLD_LOCAL);
+  if (!handle) {
+    std::string err = dlerror();
+    throw RuntimeError("Failed to load native module '" + name + "': " + err);
+  }
+
+  // Try to find module init function: sulfurpp_module_init
+  using InitFunc = ValuePtr (*)(Interpreter*);
+  InitFunc init = reinterpret_cast<InitFunc>(dlsym(handle, "sulfurpp_module_init"));
+  if (!init) {
+    dlclose(handle);
+    throw RuntimeError("Native module '" + name + "' missing sulfurpp_module_init function");
+  }
+
+  // Call init function to get module dict
+  ValuePtr moduleDict = init(this);
+  if (!moduleDict->isDict()) {
+    dlclose(handle);
+    throw RuntimeError("Native module '" + name + "' init must return a dict");
+  }
+
+  // Store module info
+  NativeModule mod;
+  mod.name = name;
+  mod.handle = handle;
+  mod.moduleDict = moduleDict;
+  nativeModules_[name] = std::move(mod);
+
+  return moduleDict;
+}
+
+ValuePtr Interpreter::initNativeModule(const std::string& name, void* handle) {
+  using InitFunc = ValuePtr (*)(Interpreter*);
+  InitFunc init = reinterpret_cast<InitFunc>(dlsym(handle, "sulfurpp_module_init"));
+  if (!init) {
+    throw RuntimeError("Native module '" + name + "' missing sulfurpp_module_init function");
+  }
+  return init(this);
+}
+
+void Interpreter::unloadNativeModule(const std::string& name) {
+  auto it = nativeModules_.find(name);
+  if (it != nativeModules_.end()) {
+    dlclose(it->second.handle);
+    nativeModules_.erase(it);
+  }
 }

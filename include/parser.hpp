@@ -41,6 +41,7 @@ private:
     StmtPtr parseUnsafe();
     StmtPtr parseDefer();
     StmtPtr parseTryCatch();
+    StmtPtr parseMatch();
     StmtPtr parseExprStmt();
 
     // Expressions

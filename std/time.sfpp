@@ -1,0 +1,21 @@
+// std/time.sfpp
+// Sulfur++ Time Utilities
+// Provides timing, delay, and profiling utilities.
+
+export this as std/time;
+
+// Expose native functions from the interpreter
+expose "delay" as delay;
+expose "delayMilliseconds" as delayMillis;
+expose "delayMicroseconds" as delayMicros;
+expose "now" as micros;
+
+// Easy-to-use wrappers for better usability
+fn millis() {
+    return micros() / 1000;
+}
+
+fn seconds() {
+    return millis() / 1000;
+}
+

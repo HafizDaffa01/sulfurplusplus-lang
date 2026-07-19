@@ -71,6 +71,7 @@ struct DictValue {
 // Pointer value (for unsafe blocks)
 struct PtrValue {
     ValuePtr* target;
+    void* rawPtr = nullptr;
 };
 
 using ValueVariant = std::variant<
@@ -171,6 +172,12 @@ inline ValuePtr makeStructInst(std::shared_ptr<StructInstance> si) { return Valu
 inline ValuePtr makePtr(ValuePtr *target) {
   auto pv = std::make_shared<PtrValue>();
   pv->target = target;
+  return Value(pv);
+}
+inline ValuePtr makeRawPtr(void* ptr) {
+  auto pv = std::make_shared<PtrValue>();
+  pv->target = nullptr;
+  pv->rawPtr = ptr;
   return Value(pv);
 }
 

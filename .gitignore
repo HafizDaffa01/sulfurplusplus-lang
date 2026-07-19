@@ -34,7 +34,6 @@ _deps/
 # Sulfur++ Ecosystem Temp Files (Generated during tests)
 /packages/
 /flash/
-/fuse.json
-/ignitor.toml
+
 /main.sfpp
 /README.md.backup
