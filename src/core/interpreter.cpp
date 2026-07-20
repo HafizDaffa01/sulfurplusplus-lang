@@ -17,6 +17,7 @@
 #include <cstdio>
 #include <cstring>
 #include <dlfcn.h>
+#include <curl/curl.h>
 #include "diagnostic.hpp"
 
 #ifdef ENABLE_LLVM
@@ -99,6 +100,27 @@ std::string Interpreter::readLine() {
   std::string line;
   std::getline(*stdin_, line);
   return line;
+}
+
+// libcurl callbacks for HTTP client
+static size_t writeCallback(void* contents, size_t size, size_t nmemb, void* userp) {
+  ((std::string*)userp)->append((char*)contents, size * nmemb);
+  return size * nmemb;
+}
+
+static size_t headerCallback(void* contents, size_t size, size_t nmemb, void* userp) {
+  std::string header((char*)contents, size * nmemb);
+  auto headers = (std::unordered_map<std::string, std::string>*)userp;
+  size_t colon = header.find(':');
+  if (colon != std::string::npos) {
+    std::string key = header.substr(0, colon);
+    std::string val = header.substr(colon + 1);
+    key.erase(key.find_last_not_of(" \t\r\n") + 1);
+    val.erase(0, val.find_first_not_of(" \t\r\n"));
+    val.erase(val.find_last_not_of(" \t\r\n") + 1);
+    (*headers)[key] = val;
+  }
+  return size * nmemb;
 }
 
 // Try to load a native module (.so/.dylib/.dll)
@@ -3801,6 +3823,132 @@ void Interpreter::registerBuiltins() {
     if (type == "ptr" || type == "pointer") return makeInt(sizeof(void*));
     if (type == "bool") return makeInt(sizeof(bool));
     throw RuntimeError("ffi_sizeof: unknown type '" + type + "'");
+  });
+
+  // ==========================================
+  // HTTP Client (libcurl)
+  // ==========================================
+
+  // Core HTTP request function: http_request(url, options?)
+  // options: {method, body, headers, params, timeout, follow_redirects, verify_ssl, ca_path, cert_path, key_path}
+  defNative("http_request", [](std::vector<ValuePtr> args) -> ValuePtr {
+    if (args.empty()) throw RuntimeError("http_request requires at least a URL");
+
+    std::string url = args[0]->toString();
+    std::string method = "GET";
+    std::string body = "";
+    std::unordered_map<std::string, std::string> headers;
+    std::unordered_map<std::string, std::string> queryParams;
+    int timeout = 30;
+    bool followRedirects = true;
+    bool verifySSL = true;
+    std::string caPath = "";
+    std::string certPath = "";
+    std::string keyPath = "";
+
+    // Parse options from second argument (dict)
+    if (args.size() >= 2 && args[1]->isDict()) {
+      auto opts = args[1]->asDict();
+      if (opts->pairs.count("method")) method = opts->pairs["method"]->toString();
+      if (opts->pairs.count("body")) body = opts->pairs["body"]->toString();
+      if (opts->pairs.count("headers")) {
+        auto h = opts->pairs["headers"]->asDict();
+        for (auto& kv : h->pairs) {
+          headers[kv.first] = kv.second->toString();
+        }
+      }
+      if (opts->pairs.count("params")) {
+        auto p = opts->pairs["params"]->asDict();
+        for (auto& kv : p->pairs) {
+          queryParams[kv.first] = kv.second->toString();
+        }
+      }
+      if (opts->pairs.count("timeout")) timeout = (int)opts->pairs["timeout"]->asFloat();
+      if (opts->pairs.count("follow_redirects")) followRedirects = opts->pairs["follow_redirects"]->asBool();
+      if (opts->pairs.count("verify_ssl")) verifySSL = opts->pairs["verify_ssl"]->asBool();
+      if (opts->pairs.count("ca_path")) caPath = opts->pairs["ca_path"]->toString();
+      if (opts->pairs.count("cert_path")) certPath = opts->pairs["cert_path"]->toString();
+      if (opts->pairs.count("key_path")) keyPath = opts->pairs["key_path"]->toString();
+    }
+
+    // Build URL with query params
+    if (!queryParams.empty()) {
+      url += (url.find('?') == std::string::npos) ? "?" : "&";
+      bool first = true;
+      for (auto& kv : queryParams) {
+        if (!first) url += "&";
+        url += kv.first + "=" + kv.second;
+        first = false;
+      }
+    }
+
+    CURL* curl = curl_easy_init();
+    if (!curl) throw RuntimeError("Failed to initialize curl");
+
+    std::string response;
+    std::unordered_map<std::string, std::string> responseHeaders;
+
+    curl_easy_setopt(curl, CURLOPT_URL, url.c_str());
+    curl_easy_setopt(curl, CURLOPT_CUSTOMREQUEST, method.c_str());
+    curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, writeCallback);
+    curl_easy_setopt(curl, CURLOPT_WRITEDATA, &response);
+    curl_easy_setopt(curl, CURLOPT_HEADERFUNCTION, headerCallback);
+    curl_easy_setopt(curl, CURLOPT_HEADERDATA, &responseHeaders);
+    curl_easy_setopt(curl, CURLOPT_TIMEOUT, timeout);
+    curl_easy_setopt(curl, CURLOPT_FOLLOWLOCATION, followRedirects ? 1L : 0L);
+    curl_easy_setopt(curl, CURLOPT_SSL_VERIFYPEER, verifySSL ? 1L : 0L);
+    curl_easy_setopt(curl, CURLOPT_SSL_VERIFYHOST, verifySSL ? 2L : 0L);
+
+    if (!caPath.empty()) curl_easy_setopt(curl, CURLOPT_CAINFO, caPath.c_str());
+    if (!certPath.empty()) curl_easy_setopt(curl, CURLOPT_SSLCERT, certPath.c_str());
+    if (!keyPath.empty()) curl_easy_setopt(curl, CURLOPT_SSLKEY, keyPath.c_str());
+
+    // Set headers
+    struct curl_slist* headerList = nullptr;
+    for (auto& kv : headers) {
+      std::string h = kv.first + ": " + kv.second;
+      headerList = curl_slist_append(headerList, h.c_str());
+    }
+    if (!body.empty()) {
+      curl_easy_setopt(curl, CURLOPT_POSTFIELDS, body.c_str());
+      curl_easy_setopt(curl, CURLOPT_POSTFIELDSIZE, body.size());
+    }
+    if (headerList) curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headerList);
+
+    CURLcode res = curl_easy_perform(curl);
+
+    long httpCode = 0;
+    curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &httpCode);
+
+    double totalTime = 0;
+    curl_easy_getinfo(curl, CURLINFO_TOTAL_TIME, &totalTime);
+
+    if (headerList) curl_slist_free_all(headerList);
+    curl_easy_cleanup(curl);
+
+    if (res != CURLE_OK) {
+      std::string err = curl_easy_strerror(res);
+      throw RuntimeError("HTTP request failed: " + err);
+    }
+
+    // Build response dict
+    auto respDict = std::make_shared<DictValue>();
+    respDict->set("status", makeInt(httpCode));
+    respDict->set("text", makeStr(response));
+    respDict->set("ok", makeBool(httpCode >= 200 && httpCode < 300));
+    respDict->set("elapsed", makeFloat(totalTime));
+
+    // Response headers
+    auto hdrDict = std::make_shared<DictValue>();
+    for (auto& kv : responseHeaders) {
+      hdrDict->set(kv.first, makeStr(kv.second));
+    }
+    respDict->set("headers", makeDict(hdrDict));
+
+    // Raw response body (for JSON parsing in sfpp)
+    respDict->set("body", makeStr(response));
+
+    return makeDict(respDict);
   });
 
   // Low-level native used by the sfpp-side Alias class (src/stdlib/alias.sfpp)

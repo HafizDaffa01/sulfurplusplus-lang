@@ -18,46 +18,19 @@ set(CMAKE_CXX_EXTENSIONS ON)
 set(LLVM_LIBS "")
 set(CLEAN_LLVM_INCLUDES "")
 
+# -------------------------------------------------
+# Find libcurl for HTTP client
+# -------------------------------------------------
+find_package(CURL REQUIRED)
+message(STATUS "Found libcurl: ${CURL_VERSION}")
+
 if(USE_LLVM)
-    find_package(LLVM REQUIRED CONFIG)
-    message(STATUS "Found LLVM ${LLVM_PACKAGE_VERSION}")
 
-    llvm_map_components_to_libnames(LLVM_LIBS
-        core support irreader
-        executionengine orcjit
-        nativecodegen
-        passes
-        target
-        mc mca
-        aarch64asmparser asmparser
-    )
-
-    # Filter out Termux host system headers from include dirs
-    foreach(dir ${LLVM_INCLUDE_DIRS})
-        if(NOT dir MATCHES "com.termux")
-            list(APPEND CLEAN_LLVM_INCLUDES ${dir})
-        endif()
-    endforeach()
-
-    # Clean up imported LLVM target properties to prevent propagating bad paths
-    foreach(lib ${LLVM_LIBS})
-        if(TARGET ${lib})
-            get_target_property(inc_dirs ${lib} INTERFACE_INCLUDE_DIRECTORIES)
-            if(inc_dirs)
-                set(clean_inc_dirs "")
-                foreach(dir ${inc_dirs})
-                    if(NOT dir MATCHES "com.termux")
-                        list(APPEND clean_inc_dirs ${dir})
-                    endif()
-                endforeach()
-                set_target_properties(${lib} PROPERTIES
-                    INTERFACE_INCLUDE_DIRECTORIES "${clean_inc_dirs}")
-            endif()
-        endif()
-    endforeach()
-
-    message(STATUS "LLVM libs: ${LLVM_LIBS}")
-endif()
+# -------------------------------------------------
+# Find LLVM early so we can adjust compiler flags
+# -------------------------------------------------
+set(LLVM_LIBS "")
+set(CLEAN_LLVM_INCLUDES "")
 
 # -------------------------------------------------
 # Compiler flags for maximum optimization
@@ -66,13 +39,13 @@ if(MSVC)
     add_compile_options(/W4 /Ot /Oy /GL)
     add_compile_options(/Zc:__cplusplus /Zc:preprocessor)
 else()
-    if(USE_LLVM)
-        add_compile_options(-Wall -Wextra -O3)
-    else()
-        add_compile_options(-Wall -Wextra -O3 -flto)
+    add_compile_options(-Wall -Wextra -O3)
+    if(NOT USE_LLVM)
+        add_compile_options(-flto)
         add_link_options(-flto)
     endif()
     add_compile_definitions(_GNU_SOURCE)
+endif()
 endif()
 
 # -------------------------------------------------
@@ -106,6 +79,10 @@ if(USE_LLVM)
     target_link_libraries(sulfur PUBLIC ${LLVM_LIBS})
     target_compile_definitions(sulfur PUBLIC ENABLE_LLVM)
 endif()
+
+# Link libcurl for HTTP client
+target_link_libraries(sulfur PUBLIC ${CURL_LIBRARIES})
+target_include_directories(sulfur PUBLIC ${CURL_INCLUDE_DIRS})
 
 # -------------------------------------------------
 # combust executable

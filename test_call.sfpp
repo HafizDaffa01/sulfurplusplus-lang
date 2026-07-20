@@ -1,0 +1,7 @@
+import std/http as http;
+import std/io as io;
+
+io.Terminal.Out << "Calling http.get..." << io.Terminal.EOL;
+var resp = http.get("https://httpbin.org/get");
+io.Terminal.Out << "resp type: " << typeOf(resp) << io.Terminal.EOL;
+io.Terminal.Out << "resp: " << toStr(resp) << io.Terminal.EOL;

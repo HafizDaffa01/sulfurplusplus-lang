@@ -1,0 +1,18 @@
+import std/io as io;
+
+// Test if http_request native works
+var result = http_request("https://httpbin.org/get", {});
+
+io.Terminal.Out << "Result type: " << typeOf(result) << io.Terminal.EOL;
+io.Terminal.Out << "Result: " << toStr(result) << io.Terminal.EOL;
+
+if (typeOf(result) == "dict") {
+    io.Terminal.Out << "Is dict: true" << io.Terminal.EOL;
+    io.Terminal.Out << "Status: " << result["status"] << io.Terminal.EOL;
+    io.Terminal.Out << "OK: " << result["ok"] << io.Terminal.EOL;
+    io.Terminal.Out << "Elapsed: " << result["elapsed"] << io.Terminal.EOL;
+} else {
+    io.Terminal.Out << "Not a dict!" << io.Terminal.EOL;
+}
+
+io.Terminal.Out << "\nNative HTTP client works!" << io.Terminal.EOL;

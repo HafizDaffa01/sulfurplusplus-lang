@@ -1,0 +1,23 @@
+import std/http as http;
+import std/io as io;
+
+io.Terminal.Out << "Testing HTTP client..." << io.Terminal.EOL;
+
+// Test GET request
+var resp = http.get("https://httpbin.org/get");
+io.Terminal.Out << "GET status: " << resp.status << io.Terminal.EOL;
+io.Terminal.Out << "GET ok: " << resp.ok << io.Terminal.EOL;
+io.Terminal.Out << "GET elapsed: " << resp.elapsed << "s" << io.Terminal.EOL;
+io.Terminal.Out << "GET headers: " << resp.headers << io.Terminal.EOL;
+io.Terminal.Out << "GET body preview: " << resp.body << "..." << io.Terminal.EOL;
+
+// Test POST request
+var postResp = http.post("https://httpbin.org/post", {"key": "value", "number": 42});
+io.Terminal.Out << "POST status: " << postResp.status << io.Terminal.EOL;
+io.Terminal.Out << "POST ok: " << postResp.ok << io.Terminal.EOL;
+
+// Test GET with query params
+var resp2 = http.get("https://httpbin.org/get", {"params": {"foo": "bar", "baz": 123}});
+io.Terminal.Out << "GET with params status: " << resp2.status << io.Terminal.EOL;
+
+io.Terminal.Out << "All HTTP tests passed!" << io.Terminal.EOL;

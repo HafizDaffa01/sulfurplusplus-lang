@@ -1,0 +1,9 @@
+import std/http as http;
+import std/io as io;
+
+io.Terminal.Out << "Before get" << io.Terminal.EOL;
+var opts = {};
+opts["method"] = "GET";
+io.Terminal.Out << "opts created: " << toStr(opts) << io.Terminal.EOL;
+var resp = http_request("https://httpbin.org/get", opts);
+io.Terminal.Out << "resp type: " << typeOf(resp) << io.Terminal.EOL;

@@ -1,0 +1,6 @@
+import std/io as io;
+
+io.Terminal.Out << "Before import" << io.Terminal.EOL;
+import std/http as http;
+io.Terminal.Out << "After import" << io.Terminal.EOL;
+io.Terminal.Out << "http.get exists: " << (http.get != null) << io.Terminal.EOL;

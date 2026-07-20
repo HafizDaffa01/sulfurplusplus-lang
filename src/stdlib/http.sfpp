@@ -1,0 +1,45 @@
+// std/http.sfpp
+// HTTP Client module
+
+export this as std/http;
+
+expose "http_request" as http_request;
+
+fn get(url, options) {
+    var opts = options ?? {};
+    opts["method"] = "GET";
+    return http_request(url, opts);
+}
+
+fn post(url, body, options) {
+    var opts = options ?? {};
+    opts["method"] = "POST";
+    if (body != null) {
+        opts["body"] = body;
+    }
+    return http_request(url, opts);
+}
+
+fn put(url, body, options) {
+    var opts = options ?? {};
+    opts["method"] = "PUT";
+    if (body != null) {
+        opts["body"] = body;
+    }
+    return http_request(url, opts);
+}
+
+fn http_delete(url, options) {
+    var opts = options ?? {};
+    opts["method"] = "DELETE";
+    return http_request(url, opts);
+}
+
+fn patch(url, body, options) {
+    var opts = options ?? {};
+    opts["method"] = "PATCH";
+    if (body != null) {
+        opts["body"] = body;
+    }
+    return http_request(url, opts);
+}

@@ -1,0 +1,34 @@
+import std/http as http;
+import std/io as io;
+
+io.Terminal.Out << "=== Testing all HTTP methods ===" << io.Terminal.EOL;
+
+// GET
+var resp = http.get("https://httpbin.org/get");
+io.Terminal.Out << "GET: " << resp["status"] << " OK: " << resp["ok"] << io.Terminal.EOL;
+
+// POST with JSON
+var postResp = http.post("https://httpbin.org/post", {"name": "Sulfur++", "version": 1});
+io.Terminal.Out << "POST: " << postResp["status"] << " OK: " << postResp["ok"] << io.Terminal.EOL;
+
+// PUT
+var putResp = http.put("https://httpbin.org/put", {"updated": true});
+io.Terminal.Out << "PUT: " << putResp["status"] << " OK: " << putResp["ok"] << io.Terminal.EOL;
+
+// DELETE
+var delResp = http.http_delete("https://httpbin.org/delete");
+io.Terminal.Out << "DELETE: " << delResp["status"] << " OK: " << delResp["ok"] << io.Terminal.EOL;
+
+// PATCH
+var patchResp = http.patch("https://httpbin.org/patch", {"patched": true});
+io.Terminal.Out << "PATCH: " << patchResp["status"] << " OK: " << patchResp["ok"] << io.Terminal.EOL;
+
+// GET with query params
+var paramResp = http.get("https://httpbin.org/get", {"params": {"foo": "bar", "num": 42}});
+io.Terminal.Out << "GET with params: " << paramResp["status"] << " OK: " << paramResp["ok"] << io.Terminal.EOL;
+
+// GET with custom headers
+var headerResp = http.get("https://httpbin.org/headers", {"headers": {"X-Custom": "test-value"}});
+io.Terminal.Out << "GET with headers: " << headerResp["status"] << " OK: " << headerResp["ok"] << io.Terminal.EOL;
+
+io.Terminal.Out << "=== All tests passed! ===" << io.Terminal.EOL;

@@ -1,0 +1,11 @@
+import std/io as io;
+import std/http as http;
+
+io.Terminal.Out << "Testing HTTP module wrapper..." << io.Terminal.EOL;
+
+// Test GET
+var resp = http.get("https://httpbin.org/get");
+io.Terminal.Out << "GET status: " << resp["status"] << io.Terminal.EOL;
+io.Terminal.Out << "GET ok: " << resp["ok"] << io.Terminal.EOL;
+
+io.Terminal.Out << "\nHTTP module wrapper works!" << io.Terminal.EOL;
