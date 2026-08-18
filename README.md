@@ -1,8 +1,17 @@
-# Sulfur++ Language
+<p align="center">
+  <img src="assets/logo.png" alt="Sulfur++ Logo" width="480">
+</p>
 
-A high-performance, C++-backed scripting and compiled language for systems programming, data processing, algorithms, desktop, and embedded applications. Features dynamic typing, native system access, static semantic analysis, a rich standard library, and modern syntax.
+<p align="center">
+  <b>A high-performance, modern programming language for systems, data science, and developer toolchains.</b>
+</p>
 
-> **"Write Easy, Perform Fast"**
+<p align="center">
+  <a href="#-automated-test-suite"><img src="https://img.shields.io/badge/tests-24%20passed%20(100%25)-success.svg" alt="Tests"></a>
+  <a href="#-performance-benchmarks"><img src="https://img.shields.io/badge/performance-benchmarked-yellow.svg" alt="Benchmarks"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="License"></a>
+  <a href="https://github.com/HafizDaffa01/sulfurplusplus-lang"><img src="https://img.shields.io/badge/version-1.0.3--A-orange.svg" alt="Version"></a>
+</p>
 
 ---
 
