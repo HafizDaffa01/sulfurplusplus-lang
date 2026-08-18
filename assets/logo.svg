@@ -1,0 +1,70 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 360" width="100%" height="100%">
+  <defs>
+    <linearGradient id="yellowGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#FFD600" />
+      <stop offset="100%" stop-color="#F59E0B" />
+    </linearGradient>
+    <linearGradient id="blackGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#27272A" />
+      <stop offset="100%" stop-color="#09090B" />
+    </linearGradient>
+    <filter id="subtleShadow" x="-10%" y="-10%" width="120%" height="120%">
+      <feDropShadow dx="0" dy="6" stdDeviation="8" flood-opacity="0.15" />
+    </filter>
+  </defs>
+
+  <!-- Left Icon Ribbon 'S' -->
+  <g transform="translate(80, 50)" filter="url(#subtleShadow)">
+    <!-- Top Black Ribbon Segment -->
+    <path d="M 50 10 
+             L 125 10 
+             C 135 10, 142 16, 147 24 
+             L 75 96 
+             L 25 96 
+             C 12 96, 5 82, 14 73 
+             L 38 49 
+             Z" 
+          fill="url(#blackGrad)" />
+    
+    <!-- Top Main Black Angled Block -->
+    <path d="M 45 12 
+             C 52 5, 62 2, 72 2 
+             L 130 2 
+             C 142 2, 150 12, 144 23 
+             L 60 108 
+             C 54 115, 43 117, 34 112 
+             L 16 101 
+             C 8 96, 7 84, 15 77 
+             Z" 
+          fill="#18181B" />
+
+    <!-- Center Fold Overlap Shadow -->
+    <path d="M 60 108 
+             L 125 155 
+             C 134 162, 131 176, 120 178 
+             L 48 185 
+             C 40 186, 33 181, 30 174 
+             L 20 150 
+             Z" 
+          fill="#EAB308" opacity="0.95" />
+
+    <!-- Bottom Yellow Ribbon Segment -->
+    <path d="M 120 145 
+             C 130 152, 131 166, 122 175 
+             L 45 252 
+             C 35 262, 18 258, 14 245 
+             L 2 205 
+             C -2 193, 4 181, 15 174 
+             L 85 125 
+             Z" 
+          fill="url(#yellowGrad)" />
+  </g>
+
+  <!-- Typography: 'Sulfur' -->
+  <text x="320" y="210" 
+        font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif" 
+        font-weight="900" 
+        font-size="140" 
+        letter-spacing="-3" 
+        fill="#111827">Sulfur<tspan fill="#FACC15" font-weight="900">++</tspan></text>
+</svg>
