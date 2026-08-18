@@ -19,10 +19,12 @@ set(LLVM_LIBS "")
 set(CLEAN_LLVM_INCLUDES "")
 
 # -------------------------------------------------
-# Find libcurl for HTTP client
+# Find libcurl for HTTP client (optional)
 # -------------------------------------------------
-find_package(CURL REQUIRED)
-message(STATUS "Found libcurl: ${CURL_VERSION}")
+find_package(CURL QUIET)
+if(CURL_FOUND)
+    message(STATUS "Found libcurl: ${CURL_VERSION}")
+endif()
 
 if(USE_LLVM)
 
