@@ -89,9 +89,11 @@ if(USE_LLVM)
     target_compile_definitions(sulfur PUBLIC ENABLE_LLVM)
 endif()
 
-# Link libcurl for HTTP client
-target_link_libraries(sulfur PUBLIC ${CURL_LIBRARIES})
-target_include_directories(sulfur PUBLIC ${CURL_INCLUDE_DIRS})
+# Link libcurl for HTTP client if available
+if(CURL_FOUND)
+    target_link_libraries(sulfur PUBLIC ${CURL_LIBRARIES})
+    target_include_directories(sulfur PUBLIC ${CURL_INCLUDE_DIRS})
+endif()
 
 # -------------------------------------------------
 # combust executable
