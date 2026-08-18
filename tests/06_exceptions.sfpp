@@ -1,0 +1,26 @@
+import std/io as io;
+
+fn assert(cond, name) {
+    if (!cond) {
+        io.Terminal.Out << "FAIL: " << name << "\n";
+        throw "Assertion failed: " + name;
+    }
+    io.Terminal.Out << "PASS: " << name << "\n";
+}
+
+// Basic try-catch
+var caught = false;
+var errMsg = "";
+var errCode = "";
+try {
+    throw "Custom runtime error";
+} catch (e) {
+    caught = true;
+    errMsg = e["message"];
+    errCode = e["code"];
+}
+assert(caught == true, "Caught exception");
+assert(errMsg == "Custom runtime error", "Error message matched");
+assert(errCode == "E_RUNTIME_500", "Error code matched");
+
+io.Terminal.Out << "All exception tests passed!\n";

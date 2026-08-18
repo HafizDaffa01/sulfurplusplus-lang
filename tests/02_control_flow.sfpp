@@ -1,0 +1,55 @@
+import std/io as io;
+
+fn assert(cond, name) {
+    if (!cond) {
+        io.Terminal.Out << "FAIL: " << name << "\n";
+        throw "Assertion failed: " + name;
+    }
+    io.Terminal.Out << "PASS: " << name << "\n";
+}
+
+// If-Else
+var val = 10;
+var branch = 0;
+if (val > 5) {
+    branch = 1;
+} else {
+    branch = 2;
+}
+assert(branch == 1, "If-else branch");
+
+// While loop
+var count = 0;
+var sum = 0;
+while (count < 5) {
+    sum = sum + count;
+    count = count + 1;
+}
+assert(sum == 10, "While loop sum");
+
+// For-in loop
+var items = [10, 20, 30];
+var listSum = 0;
+for (x in items) {
+    listSum = listSum + x;
+}
+assert(listSum == 60, "For-in loop sum");
+
+// C-style for loop
+var cSum = 0;
+for (var i = 1; i <= 4; i = i + 1) {
+    cSum = cSum + i;
+}
+assert(cSum == 10, "C-style for loop sum");
+
+// Match statement
+var matched = 0;
+var target = 200;
+match (target) {
+    200 => { matched = 1; }
+    404 => { matched = 2; }
+    _ => { matched = 3; }
+}
+assert(matched == 1, "Match 200");
+
+io.Terminal.Out << "All control flow tests passed!\n";

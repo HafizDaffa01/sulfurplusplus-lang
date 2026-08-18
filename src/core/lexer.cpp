@@ -134,6 +134,16 @@ Token Lexer::lexNumber() {
         return Token(TokenType::INT_LIT, num, startLine, col_);
     }
 
+    // Binary
+    if (peek() == '0' && (peek(1) == 'b' || peek(1) == 'B')) {
+        num += advance(); num += advance();
+        while (peek() == '0' || peek() == '1' || peek() == '_') {
+            char c = advance();
+            if (c != '_') num += c;
+        }
+        return Token(TokenType::INT_LIT, num, startLine, col_);
+    }
+
     while (std::isdigit(peek()) || peek() == '_') {
         char c = advance();
         if (c != '_') num += c;
@@ -201,6 +211,10 @@ Token Lexer::lexString(char delim) {
                 case 'n': s += '\n'; break;
                 case 't': s += '\t'; break;
                 case 'r': s += '\r'; break;
+                case 'a': s += '\a'; break;
+                case 'b': s += '\b'; break;
+                case 'f': s += '\f'; break;
+                case 'v': s += '\v'; break;
                 case '"': s += '"'; break;
                 case '\'': s += '\''; break;
                 case '\\': s += '\\'; break;

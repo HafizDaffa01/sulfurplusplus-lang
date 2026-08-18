@@ -1,0 +1,56 @@
+import std/io as io;
+
+fn assert(cond, name) {
+    if (!cond) {
+        io.Terminal.Out << "FAIL: " << name << "\n";
+        throw "Assertion failed: " + name;
+    }
+    io.Terminal.Out << "PASS: " << name << "\n";
+}
+
+// 1. Hex literal parsing
+var hexNum = 0xFF;
+assert(hexNum == 255, "Hex literal 0xFF == 255");
+var hexNum2 = 0x10;
+assert(hexNum2 == 16, "Hex literal 0x10 == 16");
+
+// 2. Negative list and string indexing
+var list = [10, 20, 30, 40, 50];
+assert(list[-1] == 50, "List index -1");
+assert(list[-2] == 40, "List index -2");
+list[-1] = 99;
+assert(list[4] == 99, "List negative index assignment");
+
+var strVal = "Sulfur++";
+assert(strVal[-1] == "+", "String index -1");
+assert(strVal[-2] == "+", "String index -2");
+assert(strVal[0] == "S", "String index 0");
+
+// 3. String toInt and toFloat conversions
+var s1 = "12345";
+assert(s1.toInt() == 12345, "s1.toInt()");
+var s2 = "0x20";
+assert(s2.toInt() == 32, "s2.toInt() hex string");
+var s3 = "3.14159";
+assert(s3.toFloat() > 3.14 && s3.toFloat() < 3.15, "s3.toFloat()");
+var sInvalid = "not_a_number";
+assert(sInvalid.toInt() == 0, "sInvalid.toInt() safe fallback");
+assert(sInvalid.toFloat() == 0.0, "sInvalid.toFloat() safe fallback");
+
+// 4. Bitwise operators
+var bitA = 12; // 1100
+var bitB = 10; // 1010
+assert((bitA & bitB) == 8, "Bitwise AND 12 & 10 == 8");
+assert((bitA | bitB) == 14, "Bitwise OR 12 | 10 == 14");
+assert((bitA ^ bitB) == 6, "Bitwise XOR 12 ^ 10 == 6");
+
+// 5. Incompatible arithmetic caught gracefully as TypeError
+var caughtTypeError = false;
+try {
+    var bad = null - 5;
+} catch (e) {
+    caughtTypeError = true;
+}
+assert(caughtTypeError == true, "TypeError caught on invalid arithmetic");
+
+io.Terminal.Out << "All edge cases and robustness tests passed!\n";

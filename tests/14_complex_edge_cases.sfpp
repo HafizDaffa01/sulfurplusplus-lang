@@ -1,0 +1,77 @@
+import std/io as io;
+import std/matrix as mat;
+
+fn assert(cond, name) {
+    if (!cond) {
+        io.Terminal.Out << "FAIL: " << name << "\n";
+        throw "Assertion failed: " + name;
+    }
+    io.Terminal.Out << "PASS: " << name << "\n";
+}
+
+// 1. Matrix operations
+var A = [
+    [1, 2],
+    [3, 4]
+];
+var I = mat.m_Eye(2);
+var mult = mat.m_Mul(A, I);
+assert(mult[0][0] == 1, "Matrix mult [0][0] == 1");
+assert(mult[0][1] == 2, "Matrix mult [0][1] == 2");
+assert(mult[1][0] == 3, "Matrix mult [1][0] == 3");
+assert(mult[1][1] == 4, "Matrix mult [1][1] == 4");
+
+var trans = mat.m_Transpose(A); // [[1, 3], [2, 4]]
+assert(trans[0][1] == 3, "Matrix transpose [0][1] == 3");
+assert(trans[1][0] == 2, "Matrix transpose [1][0] == 2");
+
+var scaled = mat.m_Scale(A, 2);
+assert(scaled[0][0] == 2, "Matrix scale [0][0] == 2");
+assert(scaled[1][1] == 8, "Matrix scale [1][1] == 8");
+
+// 2. Deep recursive calculation
+fn fib(n) {
+    if (n <= 1) { return n; }
+    return fib(n - 1) + fib(n - 2);
+}
+assert(fib(10) == 55, "fib(10) == 55");
+
+// 3. Higher-order function composition
+fn addTen(x) { return x + 10; }
+fn doubleVal(x) { return x * 2; }
+fn compose(f, g) {
+    return fn(x) { return g(f(x)); };
+}
+var addTenThenDouble = compose(addTen, doubleVal);
+var compRes = addTenThenDouble(5); // (5 + 10) * 2 = 30
+assert(compRes == 30, "Function composition (5 + 10) * 2 == 30");
+
+// 4. Nested closure with persistent state
+fn createBankAccount(initialBalance) {
+    var bal = initialBalance;
+    return {
+        "deposit": fn(amount) {
+            bal = bal + amount;
+            return bal;
+        },
+        "withdraw": fn(amount) {
+            bal = bal - amount;
+            return bal;
+        },
+        "getBalance": fn() {
+            return bal;
+        }
+    };
+}
+
+var acc = createBankAccount(100);
+var depositFn = acc["deposit"];
+var withdrawFn = acc["withdraw"];
+var getBalFn = acc["getBalance"];
+
+assert(getBalFn() == 100, "Initial balance == 100");
+assert(depositFn(50) == 150, "Deposit 50 -> 150");
+assert(withdrawFn(30) == 120, "Withdraw 30 -> 120");
+assert(getBalFn() == 120, "Final balance == 120");
+
+io.Terminal.Out << "All complex edge case tests passed!\n";

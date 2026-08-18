@@ -1,0 +1,56 @@
+import std/io as io;
+import std/math as math;
+
+fn assert(cond, name) {
+    if (!cond) {
+        io.Terminal.Out << "FAIL: " << name << "\n";
+        throw "Assertion failed: " + name;
+    }
+    io.Terminal.Out << "PASS: " << name << "\n";
+}
+
+// 1. Inisialisasi Bilangan Kompleks
+var z1 = math.complex(3.0, 4.0);
+var z2 = math.complex(1.0, -2.0);
+
+assert(math.real(z1) == 3.0, "real(3+4i) == 3");
+assert(math.imag(z1) == 4.0, "imag(3+4i) == 4");
+assert(math.real(z2) == 1.0, "real(1-2i) == 1");
+assert(math.imag(z2) == -2.0, "imag(1-2i) == -2");
+
+// 2. Operasi Penjumlahan & Pengurangan
+var sum = z1 + z2; // (3+1) + (4-2)i = 4 + 2i
+assert(math.real(sum) == 4.0, "real(z1 + z2) == 4");
+assert(math.imag(sum) == 2.0, "imag(z1 + z2) == 2");
+
+var diff = z1 - z2; // (3-1) + (4 - (-2))i = 2 + 6i
+assert(math.real(diff) == 2.0, "real(z1 - z2) == 2");
+assert(math.imag(diff) == 6.0, "imag(z1 - z2) == 6");
+
+// 3. Perkalian Bilangan Kompleks
+// (3+4i)*(1-2i) = 3 - 6i + 4i - 8i^2 = 11 - 2i
+var prod = z1 * z2;
+assert(math.real(prod) == 11.0, "real(z1 * z2) == 11");
+assert(math.imag(prod) == -2.0, "imag(z1 * z2) == -2");
+
+// 4. Pembagian Bilangan Kompleks
+// (3+4i) / (1-2i) = (3+4i)(1+2i) / (1^2 + (-2)^2) = (3 + 6i + 4i - 8) / 5 = (-5 + 10i)/5 = -1 + 2i
+var div = z1 / z2;
+assert(math.real(div) == -1.0, "real(z1 / z2) == -1");
+assert(math.imag(div) == 2.0, "imag(z1 / z2) == 2");
+
+// 5. Magnitude / Absolut / Modulus (|3+4i| = sqrt(3^2 + 4^2) = 5)
+var mag = math.abs(z1);
+assert(mag == 5.0, "abs(3+4i) == 5");
+
+// 6. Konjugat (Conjugate: 3+4i -> 3-4i)
+var conjZ = math.conj(z1);
+assert(math.real(conjZ) == 3.0, "real(conj(3+4i)) == 3");
+assert(math.imag(conjZ) == -4.0, "imag(conj(3+4i)) == -4");
+
+// 7. Perpangkatan Kompleks (Power)
+var zSquared = z1 ** 2; // (3+4i)^2 = 9 + 24i - 16 = -7 + 24i
+assert(math.round(math.real(zSquared)) == -7, "real((3+4i)^2) == -7");
+assert(math.round(math.imag(zSquared)) == 24, "imag((3+4i)^2) == 24");
+
+io.Terminal.Out << "All complex number tests passed!\n";

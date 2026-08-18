@@ -1,0 +1,41 @@
+// Example 5: Higher-Order Functions, Closures, & QuickSort in Sulfur++
+import std/io as io;
+
+io.Terminal.Out << "=== Sulfur++ Functional Algorithms Demo ===\n";
+
+// 1. Higher-Order Functions: Map & Filter
+fn map(list, transform) {
+    var result = [];
+    for (item in list) {
+        result.push(transform(item));
+    }
+    return result;
+}
+
+fn filter(list, predicate) {
+    var result = [];
+    for (item in list) {
+        if (predicate(item)) {
+            result.push(item);
+        }
+    }
+    return result;
+}
+
+var nums = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
+var evens = filter(nums, fn(x) { return x % 2 == 0; });
+var squared = map(evens, fn(x) { return x * x; });
+
+io.Terminal.Out << "Original: [1..10]\n";
+io.Terminal.Out << "Evens:    " << toStr(evens) << "\n";
+io.Terminal.Out << "Squared:  " << toStr(squared) << "\n";
+
+// 2. Closure Counter
+fn makeMultiplier(factor) {
+    return fn(val) {
+        return val * factor;
+    };
+}
+
+var triple = makeMultiplier(3);
+io.Terminal.Out << "Triple of 7: " << triple(7) << "\n";

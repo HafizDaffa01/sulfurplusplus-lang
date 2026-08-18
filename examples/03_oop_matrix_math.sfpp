@@ -1,0 +1,39 @@
+// Example 3: OOP, Complex Numbers, & Vector Mathematics
+import std/io as io;
+import std/math as math;
+
+io.Terminal.Out << "=== Sulfur++ Vector & Math Demo ===\n";
+
+class Vector2D {
+    x;
+    y;
+    +1>init;
+    fn init(xVal, yVal) {
+        this.x = xVal;
+        this.y = yVal;
+    }
+    fn magnitude() {
+        return math.sqrt(this.x * this.x + this.y * this.y);
+    }
+    fn dot(other) {
+        return (this.x * other.x) + (this.y * other.y);
+    }
+    fn display() {
+        return "(" + toStr(this.x) + ", " + toStr(this.y) + ")";
+    }
+}
+
+var v1 = new Vector2D(3.0, 4.0);
+var v2 = new Vector2D(1.0, 2.0);
+
+io.Terminal.Out << "Vector 1: " << v1.display() << "\n";
+io.Terminal.Out << "Vector 1 Magnitude: " << v1.magnitude() << "\n";
+io.Terminal.Out << "Vector 2: " << v2.display() << "\n";
+io.Terminal.Out << "Dot Product (v1 . v2): " << v1.dot(v2) << "\n";
+
+// Bilangan Kompleks (Native Complex type)
+var c1 = math.complex(3, 4);
+var c2 = math.complex(1, -2);
+io.Terminal.Out << "Complex 1: " << toStr(c1) << "\n";
+io.Terminal.Out << "Complex 2: " << toStr(c2) << "\n";
+io.Terminal.Out << "Complex Multiplication (c1 * c2): " << toStr(c1 * c2) << "\n";

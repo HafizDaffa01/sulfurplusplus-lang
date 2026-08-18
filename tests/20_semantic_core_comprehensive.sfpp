@@ -1,0 +1,77 @@
+import std/io as io;
+
+fn assert(cond, name) {
+    if (!cond) {
+        io.Terminal.Out << "FAIL: " << name << "\n";
+        throw "Assertion failed: " + name;
+    }
+    io.Terminal.Out << "PASS: " << name << "\n";
+}
+
+// 1. Symbol Table & Lexical Scopes
+let globalX: int = 100;
+
+fn calculate(a: int) -> int {
+    let y: int = a + globalX;
+    return y;
+}
+
+var resCalc: int = calculate(50);
+assert(resCalc == 150, "Lexical scope variable lookup across functions");
+
+// 2. Variable Shadowing in Nested Block
+var shadowVar = 10;
+{
+    var shadowVar = 99;
+    assert(shadowVar == 99, "Inner scope shadow variable");
+}
+assert(shadowVar == 10, "Outer scope preserved after block exit");
+
+// 3. Type Representation & Widening Validation
+var myInt: int = 42;
+var myFloat: float = myInt; // Automatic widening int -> float
+assert(myFloat == 42.0, "Implicit numeric widening assignability");
+
+// 4. Function Signature & Parameter Compatibility
+fn multiply(x: float, y: float) -> float {
+    return x * y;
+}
+
+var multResult: float = multiply(2.5, 4.0);
+assert(multResult == 10.0, "Function signature parameter and return evaluation");
+
+// 5. Struct & Class Semantic Validation
+struct Point {
+    x: int;
+    y: int;
+}
+
+class Vector2D {
+    x;
+    y;
+
+    +1>init;
+    fn init(vx, vy) {
+        this.x = vx;
+        this.y = vy;
+    }
+
+    fn lengthSq() {
+        return this.x * this.x + this.y * this.y;
+    }
+}
+
+var vec = new Vector2D(3.0, 4.0);
+assert(vec.lengthSq() == 25.0, "Class method semantic analysis and execution");
+
+// 6. Closures and Captured Variables
+fn makeAdder(base) {
+    return fn(val) {
+        return base + val;
+    };
+}
+
+var addTen = makeAdder(10);
+assert(addTen(25) == 35, "Closure capturing outer parameter");
+
+io.Terminal.Out << "Phase 2 Semantic Core Comprehensive Test Suite passed!\n";

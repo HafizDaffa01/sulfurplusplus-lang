@@ -1,0 +1,39 @@
+import std/io as io;
+
+fn assert(cond, name) {
+    if (!cond) {
+        io.Terminal.Out << "FAIL: " << name << "\n";
+        throw "Assertion failed: " + name;
+    }
+    io.Terminal.Out << "PASS: " << name << "\n";
+}
+
+// 1. Scoped variable shadowing & let immutability
+let a = 100;
+var b = 200;
+{
+    let a = 500; // Shadowing in child block is allowed
+    assert(a == 500, "Block shadowed let 'a'");
+    b = 300; // Mutable var reassignment is allowed
+}
+assert(a == 100, "Outer let 'a' preserved");
+assert(b == 300, "Outer var 'b' mutated");
+
+// 2. Class method 'this' context validation
+class Counter {
+    val;
+    +1>init;
+    fn init(start) {
+        this.val = start;
+    }
+    fn increment() {
+        this.val = this.val + 1;
+        return this.val;
+    }
+}
+
+var c = new Counter(10);
+assert(c.increment() == 11, "Method 'this' field access");
+assert(c.increment() == 12, "Second increment");
+
+io.Terminal.Out << "All semantic rules tests passed!\n";

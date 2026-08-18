@@ -1,0 +1,115 @@
+import std/io as io;
+
+fn assert(cond, name) {
+    if (!cond) {
+        io.Terminal.Out << "FAIL: " << name << "\n";
+        throw "Assertion failed: " + name;
+    }
+    io.Terminal.Out << "PASS: " << name << "\n";
+}
+
+// 1. Function Call Stack & Local Frame Isolation
+fn recurseSum(n) {
+    if (n <= 1) {
+        return 1;
+    }
+    return n + recurseSum(n - 1);
+}
+
+var sum10 = recurseSum(10);
+assert(sum10 == 55, "Call frame recursion and return propagation");
+
+// 2. Closure Environment Capturing & Multiple Instances
+fn makeMultiplier(factor) {
+    return fn(x) {
+        return x * factor;
+    };
+}
+
+var doubleFn = makeMultiplier(2);
+var tripleFn = makeMultiplier(3);
+assert(doubleFn(5) == 10, "Closure environment instance 1 isolation");
+assert(tripleFn(5) == 15, "Closure environment instance 2 isolation");
+
+// 3. Control Flow Signals (Break & Continue in Nested Loops)
+var controlFlowLog = [];
+for (i in [1, 2, 3]) {
+    for (j in [10, 20, 30]) {
+        if (j == 20) {
+            continue; // skips 20
+        }
+        if (i == 2 && j == 30) {
+            break; // breaks inner loop on (2, 30)
+        }
+        controlFlowLog.push(i * 100 + j);
+    }
+}
+// Expected: (1,10)=110, (1,30)=130, (2,10)=210, (3,10)=310, (3,30)=330
+assert(len(controlFlowLog) == 5, "Nested break and continue signal propagation");
+assert(controlFlowLog[0] == 110, "Control flow log index 0");
+assert(controlFlowLog[1] == 130, "Control flow log index 1");
+
+// 4. Exception Propagation with Nested Try-Catch-Finally
+var tryCatchLog = [];
+fn riskyOperation(fail) {
+    try {
+        tryCatchLog.push("try_start");
+        if (fail) {
+            throw "Intentional Error";
+        }
+        tryCatchLog.push("try_end");
+    } catch (e) {
+        tryCatchLog.push("caught_inner");
+        throw e["message"];
+    } finally {
+        tryCatchLog.push("finally_inner");
+    }
+}
+
+try {
+    riskyOperation(true);
+} catch (e) {
+    tryCatchLog.push("caught_outer");
+}
+
+assert(tryCatchLog[0] == "try_start", "Try-catch sequence 1");
+assert(tryCatchLog[1] == "finally_inner", "Finally guarantees execution upon try exit");
+assert(tryCatchLog[2] == "caught_inner", "Catch inner block executed");
+assert(tryCatchLog[3] == "caught_outer", "Re-throw propagated to outer caller");
+
+// 5. Method Dispatch & Class Instance State
+class Account {
+    balance;
+
+    +1>init;
+    fn init(initial) {
+        this.balance = initial;
+    }
+
+    fn deposit(amount) {
+        this.balance = this.balance + amount;
+        return this.balance;
+    }
+
+    fn withdraw(amount) {
+        if (amount > this.balance) {
+            throw "Insufficient funds";
+        }
+        this.balance = this.balance - amount;
+        return this.balance;
+    }
+}
+
+var acc = new Account(1000);
+assert(acc.deposit(500) == 1500, "Method dispatch deposit");
+assert(acc.withdraw(300) == 1200, "Method dispatch withdraw");
+
+var withdrawFailed = false;
+try {
+    acc.withdraw(5000);
+} catch (e) {
+    withdrawFailed = true;
+}
+assert(withdrawFailed, "Method exception handling on invalid state");
+
+io.Terminal.Out << "All Runtime / Execution Engine tests passed successfully!\n";

@@ -13,8 +13,11 @@ private:
     size_t pos_ = 0;
 
     Token& peek(int offset = 0);
+    const Token& peek(int offset = 0) const;
     Token& advance();
     bool check(TokenType t) const;
+    bool checkIdent() const;
+    bool isTypeToken(TokenType t) const;
     bool match(TokenType t);
     bool match(std::initializer_list<TokenType> types);
     Token expect(TokenType t, const std::string& msg);
@@ -51,6 +54,9 @@ private:
     ExprPtr parseNullCoal();
     ExprPtr parseOr();
     ExprPtr parseAnd();
+    ExprPtr parseBitwiseOr();
+    ExprPtr parseBitwiseXor();
+    ExprPtr parseBitwiseAnd();
     ExprPtr parseEquality();
     ExprPtr parseComparison();
     ExprPtr parseAddSub();

@@ -1,0 +1,64 @@
+import std/io as io;
+
+fn assert(cond, name) {
+    if (!cond) {
+        io.Terminal.Out << "FAIL: " << name << "\n";
+        throw "Assertion failed: " + name;
+    }
+    io.Terminal.Out << "PASS: " << name << "\n";
+}
+
+// 1. Stress Test: Deep recursion recovery
+fn deepRecurse(n) {
+    if (n <= 0) {
+        return 0;
+    }
+    return 1 + deepRecurse(n - 1);
+}
+
+var maxDepthTested = 0;
+try {
+    maxDepthTested = deepRecurse(100);
+} catch (e) {
+    maxDepthTested = -1;
+}
+assert(maxDepthTested == 100, "Call stack deep recursion handled safely");
+
+// 2. Stress Test: Deeply nested dictionary and lists
+var nested = [];
+var i = 0;
+while (i < 50) {
+    nested = [nested, {"depth": i}];
+    i = i + 1;
+}
+assert(nested[1]["depth"] == 49, "Deeply nested collection traversal");
+
+// 3. Stress Test: Division by Zero Exception Safety
+var divZeroCaught = false;
+try {
+    var bad = 100 / 0;
+} catch (e) {
+    divZeroCaught = true;
+}
+assert(divZeroCaught, "Division by zero caught safely without runtime crash");
+
+// 4. Stress Test: Array Out of Bounds Exception Safety
+var oobCaught = false;
+try {
+    var arr = [1, 2, 3];
+    var val = arr[999];
+} catch (e) {
+    oobCaught = true;
+}
+assert(oobCaught, "Array out of bounds caught safely without segfault");
+
+// 5. Stress Test: Non-existent Map Key Lookup returns null safely
+var m = {"a": 1};
+var val = m["non_existent_key"];
+assert(val == null, "Non-existent map key lookup returns null safely");
+
+// 6. Stress Test: UTF-8 & Unicode string handling
+var unicodeStr = "🚀 Sulfur++ 1.0 — Bahasa Pemrograman Modern ⚡ 100% Stabilitas";
+assert(unicodeStr != "", "Unicode string initialization");
+
+io.Terminal.Out << "All Fuzzing & Robustness tests passed successfully!\n";

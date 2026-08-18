@@ -1,0 +1,66 @@
+{
+  "Function Declaration": {
+    "prefix": "fn",
+    "body": [
+      "fn ${1:name}(${2:params}) {",
+      "    ${0}",
+      "}"
+    ],
+    "description": "Declare a Sulfur++ function"
+  },
+  "Class Declaration": {
+    "prefix": "class",
+    "body": [
+      "class ${1:ClassName} {",
+      "    ${2:field};",
+      "",
+      "    +1>init;",
+      "    fn init(${3:args}) {",
+      "        this.${2:field} = ${3:args};",
+      "    }",
+      "",
+      "    ~1>cleanup;",
+      "    fn cleanup() {",
+      "        ${0}",
+      "    }",
+      "}"
+    ],
+    "description": "Declare a Sulfur++ class with lifecycle hooks"
+  },
+  "Try Catch Block": {
+    "prefix": "try",
+    "body": [
+      "try {",
+      "    ${1}",
+      "} catch (${2:e}) {",
+      "    ${0}",
+      "}"
+    ],
+    "description": "Try-catch error handling block"
+  },
+  "Defer Block": {
+    "prefix": "defer",
+    "body": [
+      "defer {",
+      "    ${0}",
+      "}"
+    ],
+    "description": "Deterministic LIFO defer block"
+  },
+  "Unsafe Block": {
+    "prefix": "unsafe",
+    "body": [
+      "unsafe {",
+      "    ${0}",
+      "}"
+    ],
+    "description": "Unsafe pointer manipulation block"
+  },
+  "Terminal Output": {
+    "prefix": "print",
+    "body": [
+      "io.Terminal.Out << \"${1:message}\\n\";"
+    ],
+    "description": "Print to Terminal.Out"
+  }
+}

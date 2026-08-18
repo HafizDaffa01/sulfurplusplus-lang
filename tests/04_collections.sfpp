@@ -1,0 +1,35 @@
+import std/io as io;
+import std/collections as col;
+
+fn assert(cond, name) {
+    if (!cond) {
+        io.Terminal.Out << "FAIL: " << name << "\n";
+        throw "Assertion failed: " + name;
+    }
+    io.Terminal.Out << "PASS: " << name << "\n";
+}
+
+// Lists
+var arr = [10, 20, 30, 40];
+assert(len(arr) == 4, "len(arr) == 4");
+assert(arr[0] == 10, "arr[0] == 10");
+assert(arr[3] == 40, "arr[3] == 40");
+arr[1] = 99;
+assert(arr[1] == 99, "arr[1] update");
+
+// Dictionaries
+var d = {"lang": "Sulfur++", "version": 1};
+assert(d["lang"] == "Sulfur++", "d['lang']");
+assert(d["version"] == 1, "d['version']");
+d["author"] = "Enginostek";
+assert(d["author"] == "Enginostek", "d['author'] insertion");
+
+// Nested matrix
+var mat = [
+    [1, 2],
+    [3, 4]
+];
+assert(mat[0][0] == 1, "mat[0][0] == 1");
+assert(mat[1][1] == 4, "mat[1][1] == 4");
+
+io.Terminal.Out << "All collections tests passed!\n";

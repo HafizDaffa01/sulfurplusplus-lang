@@ -19,3 +19,27 @@ fn seconds() {
     return millis() / 1000;
 }
 
+class Stopwatch {
+    startTime;
+    running;
+
+    +1>init;
+    fn init() {
+        this.startTime = micros();
+        this.running = true;
+    }
+
+    fn elapsedMicros() {
+        return micros() - this.startTime;
+    }
+
+    fn elapsedMillis() {
+        return (micros() - this.startTime) / 1000;
+    }
+
+    fn reset() {
+        this.startTime = micros();
+    }
+}
+
+

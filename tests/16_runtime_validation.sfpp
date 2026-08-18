@@ -1,0 +1,34 @@
+import std/io as io;
+
+fn assert(cond, name) {
+    if (!cond) {
+        io.Terminal.Out << "FAIL: " << name << "\n";
+        throw "Assertion failed: " + name;
+    }
+    io.Terminal.Out << "PASS: " << name << "\n";
+}
+
+// 1. Stack overflow protection (infinite recursion)
+fn infiniteRecursion(n) {
+    return infiniteRecursion(n + 1);
+}
+
+var caughtStackOverflow = false;
+try {
+    infiniteRecursion(1);
+} catch (e) {
+    caughtStackOverflow = (e["code"] == "E_RECURSION_LIMIT");
+}
+
+assert(caughtStackOverflow == true, "Stack overflow protection caught E_RECURSION_LIMIT");
+
+// 2. Safe deeply nested function calls (within limit)
+fn countdown(n) {
+    if (n <= 0) { return 0; }
+    return countdown(n - 1);
+}
+
+var cdRes = countdown(100);
+assert(cdRes == 0, "Safe deep recursion within limit (100 frames)");
+
+io.Terminal.Out << "All runtime validation tests passed!\n";

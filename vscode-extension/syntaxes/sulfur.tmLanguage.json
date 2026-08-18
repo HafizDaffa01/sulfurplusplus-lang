@@ -1,0 +1,140 @@
+{
+  "$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
+  "name": "Sulfur++",
+  "scopeName": "source.sfpp",
+  "patterns": [
+    { "include": "#comments" },
+    { "include": "#strings" },
+    { "include": "#numbers" },
+    { "include": "#keywords" },
+    { "include": "#types" },
+    { "include": "#constants" },
+    { "include": "#operators" },
+    { "include": "#functions" }
+  ],
+  "repository": {
+    "comments": {
+      "patterns": [
+        {
+          "name": "comment.line.double-slash.sfpp",
+          "match": "//.*$"
+        },
+        {
+          "name": "comment.block.sfpp",
+          "begin": "/\\*",
+          "end": "\\*/"
+        }
+      ]
+    },
+    "strings": {
+      "patterns": [
+        {
+          "name": "string.quoted.double.sfpp",
+          "begin": "\"",
+          "end": "\"",
+          "patterns": [
+            {
+              "name": "constant.character.escape.sfpp",
+              "match": "\\\\."
+            }
+          ]
+        },
+        {
+          "name": "string.quoted.single.sfpp",
+          "begin": "'",
+          "end": "'",
+          "patterns": [
+            {
+              "name": "constant.character.escape.sfpp",
+              "match": "\\\\."
+            }
+          ]
+        },
+        {
+          "name": "string.interpolated.ps.sfpp",
+          "begin": "ps\"",
+          "end": "\"",
+          "patterns": [
+            {
+              "name": "variable.interpolation.sfpp",
+              "begin": "\\{",
+              "end": "\\}"
+            }
+          ]
+        }
+      ]
+    },
+    "numbers": {
+      "patterns": [
+        {
+          "name": "constant.numeric.hex.sfpp",
+          "match": "\\b0[xX][0-9a-fA-F_]+\\b"
+        },
+        {
+          "name": "constant.numeric.binary.sfpp",
+          "match": "\\b0[bB][01_]+\\b"
+        },
+        {
+          "name": "constant.numeric.float.sfpp",
+          "match": "\\b[0-9_]+\\.[0-9_]+([eE][+-]?[0-9_]+)?\\b"
+        },
+        {
+          "name": "constant.numeric.integer.sfpp",
+          "match": "\\b[0-9_]+\\b"
+        }
+      ]
+    },
+    "keywords": {
+      "patterns": [
+        {
+          "name": "keyword.control.sfpp",
+          "match": "\\b(if|else|while|for|in|break|continue|return|try|catch|finally|throw|match|defer)\\b"
+        },
+        {
+          "name": "keyword.declaration.sfpp",
+          "match": "\\b(let|var|auto|fn|class|struct|interface|import|as|export|expose|unsafe|new|delete)\\b"
+        },
+        {
+          "name": "variable.language.this.sfpp",
+          "match": "\\b(this|self)\\b"
+        },
+        {
+          "name": "keyword.other.lifecycle.sfpp",
+          "match": "(\\+[0-9]+>|~[0-9]+>)"
+        }
+      ]
+    },
+    "types": {
+      "patterns": [
+        {
+          "name": "support.type.primitive.sfpp",
+          "match": "\\b(int_8|int_16|int_32|int_64|uint_8|uint_16|uint_32|uint_64|float_32|float_64|complex_128|str|char|bool|void|list|dict|set|matrix|ptr)\\b"
+        }
+      ]
+    },
+    "constants": {
+      "patterns": [
+        {
+          "name": "constant.language.sfpp",
+          "match": "\\b(true|false|null)\\b"
+        }
+      ]
+    },
+    "operators": {
+      "patterns": [
+        {
+          "name": "keyword.operator.sfpp",
+          "match": "(\\+|\\-|\\*|\\/|\\%|\\*\\*|==|!=|<=|>=|<|>|&&|\\|\\||!|\\&|\\||\\^|~|<<|>>|\\?\\?|\\?\\.|\\?|\\->|=>|=)"
+        }
+      ]
+    },
+    "functions": {
+      "patterns": [
+        {
+          "name": "entity.name.function.sfpp",
+          "match": "\\b([a-zA-Z_][a-zA-Z0-9_]*)\\s*(?=\\()"
+        }
+      ]
+    }
+  }
+}

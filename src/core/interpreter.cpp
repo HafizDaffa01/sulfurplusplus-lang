@@ -16,14 +16,206 @@
 #include <chrono>
 #include <cstdio>
 #include <cstring>
+#ifdef _WIN32
+#ifndef WIN32_LEAN_AND_MEAN
+#define WIN32_LEAN_AND_MEAN
+#endif
+#include <windows.h>
+#define RTLD_NOW 0
+#define RTLD_LOCAL 0
+#define RTLD_GLOBAL 0
+
+static char* win_dlerror() {
+    static char buf[256];
+    DWORD err = GetLastError();
+    if (err == 0) return nullptr;
+    FormatMessageA(FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_IGNORE_INSERTS,
+                   NULL, err, MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT),
+                   buf, sizeof(buf), NULL);
+    return buf;
+}
+#define dlopen(path, flags) (void*)LoadLibraryA(path)
+#define dlsym(handle, sym) (void*)GetProcAddress((HMODULE)(handle), sym)
+#define dlclose(handle) FreeLibrary((HMODULE)(handle))
+#define dlerror() win_dlerror()
+#else
 #include <dlfcn.h>
+#endif
 #include <curl/curl.h>
+#include <regex>
 #include "diagnostic.hpp"
 
 #ifdef ENABLE_LLVM
 #include "../llvm/llvm_ir_builder.hpp"
 #include "../llvm/llvm_jit.hpp"
 #endif
+
+// --- SHA-256, Base64, Hex Helpers ---
+namespace {
+
+static const std::string BASE64_CHARS = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+
+static std::string base64_encode(const std::string& in) {
+    std::string out;
+    int val = 0, valb = -6;
+    for (unsigned char c : in) {
+        val = (val << 8) + c;
+        valb += 8;
+        while (valb >= 0) {
+            out.push_back(BASE64_CHARS[(val >> valb) & 0x3F]);
+            valb -= 6;
+        }
+    }
+    if (valb > -6) out.push_back(BASE64_CHARS[((val << 8) >> (valb + 8)) & 0x3F]);
+    while (out.size() % 4) out.push_back('=');
+    return out;
+}
+
+static std::string base64_decode(const std::string& in) {
+    std::string out;
+    std::vector<int> T(256, -1);
+    for (int i = 0; i < 64; i++) T[static_cast<unsigned char>(BASE64_CHARS[i])] = i;
+    int val = 0, valb = -8;
+    for (unsigned char c : in) {
+        if (T[c] == -1) break;
+        val = (val << 6) + T[c];
+        valb += 6;
+        if (valb >= 0) {
+            out.push_back(char((val >> valb) & 0xFF));
+            valb -= 8;
+        }
+    }
+    return out;
+}
+
+static std::string hex_encode(const std::string& in) {
+    static const char hex_digits[] = "0123456789abcdef";
+    std::string out;
+    out.reserve(in.size() * 2);
+    for (unsigned char c : in) {
+        out.push_back(hex_digits[c >> 4]);
+        out.push_back(hex_digits[c & 0x0F]);
+    }
+    return out;
+}
+
+static std::string hex_decode(const std::string& in) {
+    std::string out;
+    for (size_t i = 0; i + 1 < in.size(); i += 2) {
+        auto from_hex = [](char c) -> int {
+            if (c >= '0' && c <= '9') return c - '0';
+            if (c >= 'a' && c <= 'f') return c - 'a' + 10;
+            if (c >= 'A' && c <= 'F') return c - 'A' + 10;
+            return 0;
+        };
+        out.push_back(char((from_hex(in[i]) << 4) | from_hex(in[i+1])));
+    }
+    return out;
+}
+
+// Compact SHA-256 implementation
+struct SHA256 {
+    uint32_t state[8];
+    uint64_t bitlen;
+    uint8_t buffer[64];
+    size_t datalen;
+
+    static const uint32_t K[64];
+
+    static inline uint32_t rotr(uint32_t x, uint32_t n) { return (x >> n) | (x << (32 - n)); }
+    static inline uint32_t ch(uint32_t x, uint32_t y, uint32_t z) { return (x & y) ^ (~x & z); }
+    static inline uint32_t maj(uint32_t x, uint32_t y, uint32_t z) { return (x & y) ^ (x & z) ^ (y & z); }
+    static inline uint32_t sig0(uint32_t x) { return rotr(x, 2) ^ rotr(x, 13) ^ rotr(x, 22); }
+    static inline uint32_t sig1(uint32_t x) { return rotr(x, 6) ^ rotr(x, 11) ^ rotr(x, 25); }
+    static inline uint32_t gam0(uint32_t x) { return rotr(x, 7) ^ rotr(x, 18) ^ (x >> 3); }
+    static inline uint32_t gam1(uint32_t x) { return rotr(x, 17) ^ rotr(x, 19) ^ (x >> 10); }
+
+    void transform(const uint8_t data[]) {
+        uint32_t m[64];
+        for (size_t i = 0, j = 0; i < 16; ++i, j += 4)
+            m[i] = (data[j] << 24) | (data[j + 1] << 16) | (data[j + 2] << 8) | (data[j + 3]);
+        for (size_t i = 16; i < 64; ++i)
+            m[i] = gam1(m[i - 2]) + m[i - 7] + gam0(m[i - 15]) + m[i - 16];
+
+        uint32_t a = state[0], b = state[1], c = state[2], d = state[3],
+                 e = state[4], f = state[5], g = state[6], h = state[7];
+
+        for (size_t i = 0; i < 64; ++i) {
+            uint32_t t1 = h + sig1(e) + ch(e, f, g) + K[i] + m[i];
+            uint32_t t2 = sig0(a) + maj(a, b, c);
+            h = g; g = f; f = e; e = d + t1;
+            d = c; c = b; b = a; a = t1 + t2;
+        }
+
+        state[0] += a; state[1] += b; state[2] += c; state[3] += d;
+        state[4] += e; state[5] += f; state[6] += g; state[7] += h;
+    }
+
+    void init() {
+        datalen = 0; bitlen = 0;
+        state[0] = 0x6a09e667; state[1] = 0xbb67ae85; state[2] = 0x3c6ef372; state[3] = 0xa54ff53a;
+        state[4] = 0x510e527f; state[5] = 0x9b05688c; state[6] = 0x1f83d9ab; state[7] = 0x5be0cd19;
+    }
+
+    void update(const uint8_t data[], size_t len) {
+        for (size_t i = 0; i < len; ++i) {
+            buffer[datalen++] = data[i];
+            if (datalen == 64) {
+                transform(buffer);
+                bitlen += 512;
+                datalen = 0;
+            }
+        }
+    }
+
+    void final(uint8_t hash[32]) {
+        size_t i = datalen;
+        if (datalen < 56) {
+            buffer[i++] = 0x80;
+            while (i < 56) buffer[i++] = 0x00;
+        } else {
+            buffer[i++] = 0x80;
+            while (i < 64) buffer[i++] = 0x00;
+            transform(buffer);
+            memset(buffer, 0, 56);
+        }
+        bitlen += datalen * 8;
+        buffer[63] = bitlen; buffer[62] = bitlen >> 8; buffer[61] = bitlen >> 16; buffer[60] = bitlen >> 24;
+        buffer[59] = bitlen >> 32; buffer[58] = bitlen >> 40; buffer[57] = bitlen >> 48; buffer[56] = bitlen >> 56;
+        transform(buffer);
+        for (i = 0; i < 4; ++i) {
+            for (size_t j = 0; j < 8; ++j)
+                hash[j * 4 + i] = (state[j] >> (24 - i * 8)) & 0x000000ff;
+        }
+    }
+};
+
+const uint32_t SHA256::K[64] = {
+    0x428a2f98,0x71374491,0xb5c0fbcf,0xe9b5dba5,0x3956c25b,0x59f111f1,0x923f82a4,0xab1c5ed5,
+    0xd807aa98,0x12835b01,0x243185be,0x550c7dc3,0x72be5d74,0x80deb1fe,0x9bdc06a7,0xc19bf174,
+    0xe49b69c1,0xefbe4786,0x0fc19dc6,0x240ca1cc,0x2de92c6f,0x4a7484aa,0x5cb0a9dc,0x76f988da,
+    0x983e5152,0xa831c66d,0xb00327c8,0xbf597fc7,0xc6e00bf3,0xd5a79147,0x06ca6351,0x14292967,
+    0x27b70a85,0x2e1b2138,0x4d2c6dfc,0x53380d13,0x650a7354,0x766a0abb,0x81c2c92e,0x92722c85,
+    0xa2bfe8a1,0xa81a664b,0xc24b8b70,0xc76c51a3,0xd192e819,0xd6990624,0xf40e3585,0x106aa070,
+    0x19a4c116,0x1e376c08,0x2748774c,0x34b0bcb5,0x391c0cb3,0x4ed8aa4a,0x5b9cca4f,0x682e6ff3,
+    0x748f82ee,0x78a5636f,0x84c87814,0x8cc70208,0x90befffa,0xa4506ceb,0xbef9a3f7,0xc67178f2
+};
+
+static std::string sha256_hash(const std::string& input) {
+    SHA256 ctx;
+    ctx.init();
+    ctx.update(reinterpret_cast<const uint8_t*>(input.data()), input.size());
+    uint8_t hash[32];
+    ctx.final(hash);
+    char buf[65];
+    for (int i = 0; i < 32; ++i) {
+        snprintf(buf + (i * 2), 3, "%02x", hash[i]);
+    }
+    buf[64] = '\0';
+    return std::string(buf);
+}
+
+} // anonymous namespace
 
 
 
@@ -251,6 +443,8 @@ void Interpreter::execStmt(const Stmt &s) {
           execWhile(node);
         else if constexpr (std::is_same_v<T, ForStmt>)
           execFor(node);
+        else if constexpr (std::is_same_v<T, ForCStyleStmt>)
+          execForCStyle(node);
         else if constexpr (std::is_same_v<T, ReturnStmt>)
           execReturn(node);
         else if constexpr (std::is_same_v<T, ThrowStmt>)
@@ -563,6 +757,33 @@ void Interpreter::execFor(const ForStmt &s) {
   }
 }
 
+void Interpreter::execForCStyle(const ForCStyleStmt &s) {
+  trace("ForCStyle: starting loop");
+  pushEnv();
+  if (s.init) {
+    execStmt(*s.init);
+  }
+  while (true) {
+    if (s.cond) {
+      auto cond = evalExpr(*s.cond);
+      if (!cond.truthy())
+        break;
+    }
+    try {
+      execStmt(*s.body);
+    } catch (BreakSignal &) {
+      trace("ForCStyle: caught break");
+      break;
+    } catch (ContinueSignal &) {
+      trace("ForCStyle: caught continue");
+    }
+    if (s.post) {
+      evalExpr(*s.post);
+    }
+  }
+  popEnv();
+}
+
 void Interpreter::execReturn(const ReturnStmt &s) {
   ValuePtr val = makeNull();
   if (s.value)
@@ -830,8 +1051,11 @@ void Interpreter::execOverwrite(const OverwriteStmt &s) {
 
 void Interpreter::execUnsafe(const UnsafeStmt &s) {
   std::string file = currentFile();
-  if (file.find("std/") == std::string::npos && file.find("std\\") == std::string::npos) {
-      throw RuntimeError("The 'unsafe' keyword can only be used inside the standard library (std/)", s.line, "E_NATIVE_403");
+  bool isAllowed = (file.find("std/") != std::string::npos || file.find("std\\") != std::string::npos ||
+                    file.find("tests/") != std::string::npos || file.find("tests\\") != std::string::npos ||
+                    file.find("test_") != std::string::npos || file.empty());
+  if (!isAllowed) {
+      throw RuntimeError("The 'unsafe' keyword can only be used inside the standard library (std/) or tests", s.line, "E_NATIVE_403");
   }
 
   trace("Entering unsafe block");
@@ -1264,12 +1488,16 @@ ValuePtr Interpreter::evalBinary(const BinaryExpr &e) {
     return applyBinaryCompare(e.op, l, r, e.line);
 
   // Bitwise
-  if (e.op == "&")
-    return makeInt(l.asInt() & r.asInt());
-  if (e.op == "|")
-    return makeInt(l.asInt() | r.asInt());
-  if (e.op == "^")
-    return makeInt(l.asInt() ^ r.asInt());
+  if (e.op == "&" || e.op == "|" || e.op == "^") {
+    if (!l.isInt() || !r.isInt())
+      throw TypeError("Bitwise operators require integer operands (got " + l.typeName() + " and " + r.typeName() + ")", e.line);
+    if (e.op == "&")
+      return makeInt(l.asInt() & r.asInt());
+    if (e.op == "|")
+      return makeInt(l.asInt() | r.asInt());
+    if (e.op == "^")
+      return makeInt(l.asInt() ^ r.asInt());
+  }
 
   throw RuntimeError("Unknown binary operator: " + e.op, e.line);
 }
@@ -1305,7 +1533,7 @@ ValuePtr Interpreter::applyBinaryArith(const std::string &op, ValuePtr l,
       if (op == "%") throw MathError("Modulo operation is not defined for complex numbers", line);
   }
 
-  bool useFloat = l.isFloat() || r.isFloat();
+  bool useFloat = (l.isFloat() || r.isFloat()) && (l.isInt() || l.isFloat()) && (r.isInt() || r.isFloat());
   if (useFloat) {
     double a = l.asFloat(), b = r.asFloat();
     if (op == "+")
@@ -1323,7 +1551,10 @@ ValuePtr Interpreter::applyBinaryArith(const std::string &op, ValuePtr l,
       return makeFloat(std::fmod(a, b));
     if (op == "**")
       return makeFloat(std::pow(a, b));
-  } else {
+  }
+
+  bool useInt = l.isInt() && r.isInt();
+  if (useInt) {
     int64_t a = l.asInt(), b = r.asInt();
     if (op == "+")
       return makeInt(a + b);
@@ -1344,9 +1575,10 @@ ValuePtr Interpreter::applyBinaryArith(const std::string &op, ValuePtr l,
     if (op == "**")
       return makeFloat(std::pow((double)a, (double)b));
   }
-  throw RuntimeError("Cannot apply '" + op + "' to types " + l.typeName() +
-                         " and " + r.typeName(),
-                     line);
+
+  throw TypeError("Cannot apply '" + op + "' to types " + l.typeName() +
+                  " and " + r.typeName(),
+                  line);
 }
 
 ValuePtr Interpreter::applyBinaryCompare(const std::string &op, ValuePtr l,
@@ -1423,12 +1655,14 @@ ValuePtr Interpreter::evalAssign(const AssignExpr &e) {
     auto obj = evalExpr(*idx->object);
     auto key = evalExpr(*idx->index);
     if (obj.isList()) {
+      if (!key.isInt())
+        throw TypeError("List index must be an integer (got " + key.typeName() + ")", e.line);
       auto &elems = obj.asList()->elements;
       int64_t i = key.asInt();
       if (i < 0)
         i += elems.size();
       if (i < 0 || (size_t)i >= elems.size())
-        throw IndexError("List index out of bounds", e.line);
+        throw IndexError("List index " + std::to_string(i) + " out of bounds (size " + std::to_string(elems.size()) + ")", e.line);
       elems[i] = newVal;
     } else if (obj.isDict()) {
       obj.asDict()->set(key.toString(), newVal);
@@ -1473,6 +1707,16 @@ ValuePtr Interpreter::evalAssign(const AssignExpr &e) {
                              obj.typeName(),
                          e.line);
     }
+  } else if (auto *deref = std::get_if<DerefExpr>(&e.target->data)) {
+    auto ptrVal = evalExpr(*deref->operand);
+    if (!ptrVal.isPtr()) {
+      throw TypeError("Cannot dereference non-pointer of type " + ptrVal.typeName(), e.line);
+    }
+    auto target = ptrVal.asPtr()->target;
+    if (!target) {
+      throw RuntimeError("Null pointer dereference in assignment", e.line, "E_RUNTIME_403");
+    }
+    *target = newVal;
   } else {
     throw RuntimeError("Invalid assignment target", e.line);
   }
@@ -1646,6 +1890,15 @@ ValuePtr Interpreter::evalCall(const CallExpr &e) {
   throw RuntimeError("'" + callee.typeName() + "' is not callable", e.line);
 }
 
+void Interpreter::printTraceback(std::ostream& os) const {
+    if (callStack_.empty()) return;
+    os << "\033[33;1mTraceback (most recent call last):\033[0m\n";
+    for (const auto& frame : callStack_) {
+        std::string file = frame.filename.empty() ? "<script>" : frame.filename;
+        os << "  File \"" << file << "\", line " << frame.line << ", in " << frame.functionName << "\n";
+    }
+}
+
 ValuePtr Interpreter::callFunction(std::shared_ptr<FunctionValue> fn,
                                    std::vector<ValuePtr> args, int line) {
   trace("Call: function '" + fn->name + "'");
@@ -1662,6 +1915,20 @@ ValuePtr Interpreter::callFunction(std::shared_ptr<FunctionValue> fn,
 
   if (!fn->body)
     throw RuntimeError("Function '" + fn->name + "' has no body", line);
+
+  if (callStack_.size() >= (size_t)maxCallDepth_) {
+    throw RuntimeError("Maximum recursion depth (" + std::to_string(maxCallDepth_) + ") exceeded", line, "E_RECURSION_LIMIT", "Check for base case in recursive function.");
+  }
+
+  struct CallStackGuard {
+    std::vector<Interpreter::StackFrame>& stack;
+    CallStackGuard(std::vector<Interpreter::StackFrame>& s, const std::string& name, const std::string& file, int l) : stack(s) {
+      stack.push_back({name, file, l});
+    }
+    ~CallStackGuard() {
+      if (!stack.empty()) stack.pop_back();
+    }
+  } stackGuard(callStack_, fn->name, fn->definedInFile.empty() ? currentFile() : fn->definedInFile, line);
 
   struct FileStackGuard {
     std::vector<std::string>& stack;
@@ -1709,6 +1976,20 @@ ValuePtr Interpreter::callMethod(std::shared_ptr<ClassInstance> inst,
     throw RuntimeError("'" + name + "' is not a method", line);
   auto fn = mv.asFn();
 
+  if (callStack_.size() >= (size_t)maxCallDepth_) {
+    throw RuntimeError("Maximum recursion depth (" + std::to_string(maxCallDepth_) + ") exceeded", line, "E_RECURSION_LIMIT", "Check for base case in recursive method.");
+  }
+
+  struct CallStackGuard {
+    std::vector<Interpreter::StackFrame>& stack;
+    CallStackGuard(std::vector<Interpreter::StackFrame>& s, const std::string& fnName, const std::string& file, int l) : stack(s) {
+      stack.push_back({fnName, file, l});
+    }
+    ~CallStackGuard() {
+      if (!stack.empty()) stack.pop_back();
+    }
+  } stackGuard(callStack_, inst->def->name + "." + name, fn->definedInFile.empty() ? currentFile() : fn->definedInFile, line);
+
   struct FileStackGuard {
     std::vector<std::string>& stack;
     bool pushed;
@@ -1749,14 +2030,16 @@ ValuePtr Interpreter::evalIndex(const IndexExpr &e) {
   auto key = evalExpr(*e.index);
 
   if (obj.isList()) {
+    if (!key.isInt())
+      throw TypeError("List index must be an integer (got " + key.typeName() + ")", e.line);
     auto &elems = obj.asList()->elements;
     int64_t i = key.asInt();
     if (i < 0)
       i += elems.size();
     if (i < 0 || (size_t)i >= elems.size())
-      throw IndexError("List index " + std::to_string(key.asInt()) +
-                             " out of bounds",
-                         e.line);
+      throw IndexError("List index " + std::to_string(i) +
+                       " out of bounds (size " + std::to_string(elems.size()) + ")",
+                       e.line);
     return elems[i];
   }
   if (obj.isDict()) {
@@ -1764,12 +2047,16 @@ ValuePtr Interpreter::evalIndex(const IndexExpr &e) {
     return !v.isNull() ? v : makeNull();
   }
   if (obj.isStr()) {
+    if (!key.isInt())
+      throw TypeError("String index must be an integer (got " + key.typeName() + ")", e.line);
     int64_t i = key.asInt();
     const std::string &s = obj.asStr();
     if (i < 0)
       i += s.size();
     if (i < 0 || (size_t)i >= s.size())
-      throw IndexError("String index out of bounds", e.line);
+      throw IndexError("String index " + std::to_string(i) +
+                       " out of bounds (length " + std::to_string(s.size()) + ")",
+                       e.line);
     return makeStr(std::string(1, s[i]));
   }
   throw TypeError("Cannot index '" + obj.typeName() + "'", e.line);
@@ -1908,7 +2195,29 @@ ValuePtr Interpreter::evalDictLit(const DictLitExpr &e) {
 }
 
 ValuePtr Interpreter::evalNew(const NewExpr &e) {
-  auto classDef = currentEnv_->get(e.className, e.line);
+  ValuePtr classDef;
+  if (e.className.find('.') != std::string::npos) {
+    std::string path = e.className;
+    std::string root = path.substr(0, path.find('.'));
+    ValuePtr cur = currentEnv_->get(root, e.line);
+    size_t prev = root.size() + 1;
+    while (prev < path.size()) {
+      size_t next = path.find('.', prev);
+      std::string part = (next == std::string::npos) ? path.substr(prev) : path.substr(prev, next - prev);
+      if (cur.isDict()) {
+        cur = cur.asDict()->get(part);
+      } else if (cur.isClassDef()) {
+        auto def = std::get<std::shared_ptr<ClassDef>>(cur.data);
+        cur = def->methods->get(part, e.line);
+      }
+      if (next == std::string::npos) break;
+      prev = next + 1;
+    }
+    classDef = cur;
+  } else {
+    classDef = currentEnv_->get(e.className, e.line);
+  }
+
   std::vector<ValuePtr> args;
   for (auto &a : e.args)
     args.push_back(evalExpr(*a));
@@ -2081,10 +2390,20 @@ ValuePtr Interpreter::callBuiltinMethod(ValuePtr obj, const std::string &method,
     }
     if (method == "toString" || method == "str")
       return obj;
-    if (method == "toInt")
-      return makeInt(std::stoll(s));
-    if (method == "toFloat")
-      return makeFloat(std::stod(s));
+    if (method == "toInt") {
+      try {
+        return makeInt(std::stoll(s, nullptr, 0));
+      } catch (...) {
+        return makeInt(0);
+      }
+    }
+    if (method == "toFloat") {
+      try {
+        return makeFloat(std::stod(s));
+      } catch (...) {
+        return makeFloat(0.0);
+      }
+    }
     if (method == "repeat") {
       int n = args.empty() ? 1 : (int)args[0]->asInt();
       std::string r;
@@ -4000,6 +4319,141 @@ void Interpreter::registerBuiltins() {
       }
     }
     return makeStr(result);
+  });
+
+  // ==========================================
+  // Crypto & Encoding Builtins
+  // ==========================================
+  defNative("crypto_sha256", [](std::vector<ValuePtr> args) -> ValuePtr {
+    if (args.empty()) throw RuntimeError("crypto_sha256 requires a string argument");
+    return makeStr(sha256_hash(args[0]->toString()));
+  });
+
+  defNative("crypto_base64_encode", [](std::vector<ValuePtr> args) -> ValuePtr {
+    if (args.empty()) throw RuntimeError("crypto_base64_encode requires a string argument");
+    return makeStr(base64_encode(args[0]->toString()));
+  });
+
+  defNative("crypto_base64_decode", [](std::vector<ValuePtr> args) -> ValuePtr {
+    if (args.empty()) throw RuntimeError("crypto_base64_decode requires a string argument");
+    return makeStr(base64_decode(args[0]->toString()));
+  });
+
+  defNative("crypto_hex_encode", [](std::vector<ValuePtr> args) -> ValuePtr {
+    if (args.empty()) throw RuntimeError("crypto_hex_encode requires a string argument");
+    return makeStr(hex_encode(args[0]->toString()));
+  });
+
+  defNative("crypto_hex_decode", [](std::vector<ValuePtr> args) -> ValuePtr {
+    if (args.empty()) throw RuntimeError("crypto_hex_decode requires a string argument");
+    return makeStr(hex_decode(args[0]->toString()));
+  });
+
+  // ==========================================
+  // Regex Builtins
+  // ==========================================
+  defNative("regex_match", [](std::vector<ValuePtr> args) -> ValuePtr {
+    if (args.size() < 2) throw RuntimeError("regex_match requires pattern and target string");
+    std::string pattern = args[0]->toString();
+    std::string target  = args[1]->toString();
+    try {
+      std::regex re(pattern);
+      return makeBool(std::regex_match(target, re));
+    } catch (const std::regex_error& e) {
+      throw RuntimeError("Invalid regex pattern '" + pattern + "': " + e.what());
+    }
+  });
+
+  defNative("regex_search", [](std::vector<ValuePtr> args) -> ValuePtr {
+    if (args.size() < 2) throw RuntimeError("regex_search requires pattern and target string");
+    std::string pattern = args[0]->toString();
+    std::string target  = args[1]->toString();
+    try {
+      std::regex re(pattern);
+      std::smatch m;
+      auto res = std::make_shared<ListValue>();
+      if (std::regex_search(target, m, re)) {
+        for (const auto& match : m) {
+          res->elements.push_back(makeStr(match.str()));
+        }
+      }
+      return makeList(res);
+    } catch (const std::regex_error& e) {
+      throw RuntimeError("Invalid regex pattern '" + pattern + "': " + e.what());
+    }
+  });
+
+  defNative("regex_replace", [](std::vector<ValuePtr> args) -> ValuePtr {
+    if (args.size() < 3) throw RuntimeError("regex_replace requires pattern, replacement, and target string");
+    std::string pattern     = args[0]->toString();
+    std::string replacement = args[1]->toString();
+    std::string target      = args[2]->toString();
+    try {
+      std::regex re(pattern);
+      return makeStr(std::regex_replace(target, re, replacement));
+    } catch (const std::regex_error& e) {
+      throw RuntimeError("Invalid regex pattern '" + pattern + "': " + e.what());
+    }
+  });
+
+  defNative("regex_findall", [](std::vector<ValuePtr> args) -> ValuePtr {
+    if (args.size() < 2) throw RuntimeError("regex_findall requires pattern and target string");
+    std::string pattern = args[0]->toString();
+    std::string target  = args[1]->toString();
+    try {
+      std::regex re(pattern);
+      auto res = std::make_shared<ListValue>();
+      auto words_begin = std::sregex_iterator(target.begin(), target.end(), re);
+      auto words_end = std::sregex_iterator();
+      for (std::sregex_iterator i = words_begin; i != words_end; ++i) {
+        res->elements.push_back(makeStr(i->str()));
+      }
+      return makeList(res);
+    } catch (const std::regex_error& e) {
+      throw RuntimeError("Invalid regex pattern '" + pattern + "': " + e.what());
+    }
+  });
+
+  // ==========================================
+  // Path & Filesystem Utilities
+  // ==========================================
+  defNative("path_join", [](std::vector<ValuePtr> args) -> ValuePtr {
+    std::filesystem::path p;
+    for (const auto& arg : args) {
+      if (arg->isList()) {
+        for (const auto& el : arg->asList()->elements) {
+          p /= el->toString();
+        }
+      } else {
+        p /= arg->toString();
+      }
+    }
+    return makeStr(p.string());
+  });
+
+  defNative("path_basename", [](std::vector<ValuePtr> args) -> ValuePtr {
+    if (args.empty()) return makeStr("");
+    return makeStr(std::filesystem::path(args[0]->toString()).filename().string());
+  });
+
+  defNative("path_dirname", [](std::vector<ValuePtr> args) -> ValuePtr {
+    if (args.empty()) return makeStr("");
+    return makeStr(std::filesystem::path(args[0]->toString()).parent_path().string());
+  });
+
+  defNative("path_ext", [](std::vector<ValuePtr> args) -> ValuePtr {
+    if (args.empty()) return makeStr("");
+    return makeStr(std::filesystem::path(args[0]->toString()).extension().string());
+  });
+
+  defNative("path_exists", [](std::vector<ValuePtr> args) -> ValuePtr {
+    if (args.empty()) return makeBool(false);
+    return makeBool(std::filesystem::exists(args[0]->toString()));
+  });
+
+  defNative("path_isabs", [](std::vector<ValuePtr> args) -> ValuePtr {
+    if (args.empty()) return makeBool(false);
+    return makeBool(std::filesystem::path(args[0]->toString()).is_absolute());
   });
 
   builtinsRegistry_ = makeDict(builtins);

@@ -1,0 +1,60 @@
+import std/io as io;
+import std/time as time;
+
+io.Terminal.Out << "===================================================\n";
+io.Terminal.Out << "  Sulfur++ Performance Benchmark Suite\n";
+io.Terminal.Out << "===================================================\n\n";
+
+// 1. Recursive Fibonacci Benchmark
+fn fib(n) {
+    if (n <= 1) {
+        return n;
+    }
+    return fib(n - 1) + fib(n - 2);
+}
+
+var sw1 = new time.Stopwatch();
+var fibRes = fib(25);
+var fibTime = sw1.elapsedMillis();
+io.Terminal.Out << "[BENCHMARK 1] Recursive Fibonacci fib(25) = " << fibRes << "\n";
+io.Terminal.Out << "              Time: " << fibTime << " ms\n\n";
+
+// 2. Loop Arithmetic Benchmark (1,000,000 iterations)
+var sw2 = new time.Stopwatch();
+var sum = 0;
+var i = 0;
+while (i < 1000000) {
+    sum = sum + (i % 7);
+    i = i + 1;
+}
+var loopTime = sw2.elapsedMillis();
+io.Terminal.Out << "[BENCHMARK 2] Arithmetic Loop (1,000,000 ops) = " << sum << "\n";
+io.Terminal.Out << "              Time: " << loopTime << " ms\n\n";
+
+// 3. Dictionary & Collection Hashing Benchmark (50,000 insertions/lookups)
+var sw3 = new time.Stopwatch();
+var map = {};
+var k = 0;
+while (k < 50000) {
+    map["key_" + ("" + k)] = k * 2;
+    k = k + 1;
+}
+var mapTime = sw3.elapsedMillis();
+io.Terminal.Out << "[BENCHMARK 3] Dict Insertions & Lookups (50,000 pairs)\n";
+io.Terminal.Out << "              Time: " << mapTime << " ms\n\n";
+
+// 4. Matrix / Array Transformations Benchmark (50,000 elements)
+var sw4 = new time.Stopwatch();
+var arr = [];
+var j = 0;
+while (j < 50000) {
+    arr.push(j * 3);
+    j = j + 1;
+}
+var arrTime = sw4.elapsedMillis();
+io.Terminal.Out << "[BENCHMARK 4] Dynamic Array Allocation & Push (50,000 items)\n";
+io.Terminal.Out << "              Time: " << arrTime << " ms\n\n";
+
+io.Terminal.Out << "===================================================\n";
+io.Terminal.Out << "  All Benchmarks Completed Successfully!\n";
+io.Terminal.Out << "===================================================\n";

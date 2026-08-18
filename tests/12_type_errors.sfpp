@@ -1,0 +1,58 @@
+import std/io as io;
+
+fn assert(cond, name) {
+    if (!cond) {
+        io.Terminal.Out << "FAIL: " << name << "\n";
+        throw "Assertion failed: " + name;
+    }
+    io.Terminal.Out << "PASS: " << name << "\n";
+}
+
+// 1. Incompatible binary arithmetic (null - int)
+var caught1 = false;
+try {
+    var x = null - 10;
+} catch (e) {
+    caught1 = (e["code"] == "E_TYPE_406");
+}
+assert(caught1 == true, "TypeError on (null - 10)");
+
+// 2. Bitwise on non-integer (string & int)
+var caught2 = false;
+try {
+    var x = "hello" & 5;
+} catch (e) {
+    caught2 = (e["code"] == "E_TYPE_406");
+}
+assert(caught2 == true, "TypeError on ('hello' & 5)");
+
+// 3. Indexing with non-integer on List
+var caught3 = false;
+try {
+    var list = [1, 2, 3];
+    var x = list["invalid_key"];
+} catch (e) {
+    caught3 = (e["code"] == "E_TYPE_406");
+}
+assert(caught3 == true, "TypeError on list['invalid_key']");
+
+// 4. Indexing on non-indexable type (int)
+var caught4 = false;
+try {
+    var num = 12345;
+    var x = num[0];
+} catch (e) {
+    caught4 = (e["code"] == "E_TYPE_406");
+}
+assert(caught4 == true, "TypeError on int[0]");
+
+// 5. Unary bitwise-not on string
+var caught5 = false;
+try {
+    var x = ~"test";
+} catch (e) {
+    caught5 = (e["code"] == "E_TYPE_406");
+}
+assert(caught5 == true, "TypeError on ~'test'");
+
+io.Terminal.Out << "All type error tests passed!\n";

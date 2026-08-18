@@ -1,0 +1,53 @@
+import std/io as io;
+import std/crypto as crypto;
+import std/regex as regex;
+import std/path as path;
+
+fn assert(cond, name) {
+    if (!cond) {
+        io.Terminal.Out << "FAIL: " << name << "\n";
+        throw "Assertion failed: " + name;
+    }
+    io.Terminal.Out << "PASS: " << name << "\n";
+}
+
+// 1. Crypto: SHA-256
+// echo -n "hello" | sha256sum -> 2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824
+var hash = crypto.sha256("hello");
+assert(hash == "2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824", "SHA-256 of 'hello'");
+
+// 2. Crypto: Base64
+var b64 = crypto.base64Encode("Sulfur++ Language");
+assert(b64 == "U3VsZnVyKysgTGFuZ3VhZ2U=", "Base64 encode");
+var decoded = crypto.base64Decode(b64);
+assert(decoded == "Sulfur++ Language", "Base64 decode");
+
+// 3. Crypto: Hex
+var hexStr = crypto.hexEncode("ABC");
+assert(hexStr == "414243", "Hex encode 'ABC'");
+var unhex = crypto.hexDecode(hexStr);
+assert(unhex == "ABC", "Hex decode '414243'");
+
+// 4. Regex: Match, Search, Replace, FindAll
+var isMatch = regex.match("^[a-zA-Z0-9_]+@[a-zA-Z0-9]+\\.[a-zA-Z]+$", "dev@sulfur.org");
+assert(isMatch == true, "Regex match valid email");
+
+var isInvalid = regex.match("^[0-9]+$", "abc123");
+assert(isInvalid == false, "Regex match invalid numbers");
+
+var replaced = regex.replace("\\d+", "2026", "Year: 1999");
+assert(replaced == "Year: 2026", "Regex replace digits");
+
+var allNumbers = regex.findAll("\\d+", "Item 10 costs 25 dollars and 50 cents");
+assert(len(allNumbers) == 3, "Regex findAll count == 3");
+assert(allNumbers[0] == "10", "Regex findAll first item");
+assert(allNumbers[1] == "25", "Regex findAll second item");
+assert(allNumbers[2] == "50", "Regex findAll third item");
+
+// 5. Path operations
+var p = path.join(["folder", "subfolder", "file.txt"]);
+assert(len(p) > 0, "Path join not empty");
+assert(path.basename("dir/myfile.sfpp") == "myfile.sfpp", "Path basename");
+assert(path.ext("dir/myfile.sfpp") == ".sfpp", "Path ext");
+
+io.Terminal.Out << "All crypto, regex, and path tests passed!\n";

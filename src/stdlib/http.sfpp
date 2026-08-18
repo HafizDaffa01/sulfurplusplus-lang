@@ -1,9 +1,21 @@
 // std/http.sfpp
-// HTTP Client module
+// HTTP Client and Utilities module
 
 export this as std/http;
 
 expose "http_request" as http_request;
+import std/json as json;
+
+// Status code constants
+let STATUS_OK = 200;
+let STATUS_CREATED = 201;
+let STATUS_ACCEPTED = 202;
+let STATUS_NO_CONTENT = 204;
+let STATUS_BAD_REQUEST = 400;
+let STATUS_UNAUTHORIZED = 401;
+let STATUS_FORBIDDEN = 403;
+let STATUS_NOT_FOUND = 404;
+let STATUS_INTERNAL_ERROR = 500;
 
 fn get(url, options) {
     var opts = options ?? {};
@@ -43,3 +55,36 @@ fn patch(url, body, options) {
     }
     return http_request(url, opts);
 }
+
+// JSON shortcuts
+fn getJson(url, options) {
+    var resp = get(url, options);
+    if (resp["body"] != null) {
+        resp["data"] = json.parse(resp["body"]);
+    }
+    return resp;
+}
+
+fn postJson(url, data, options) {
+    var opts = options ?? {};
+    var headers = opts["headers"] ?? {};
+    headers["Content-Type"] = "application/json";
+    opts["headers"] = headers;
+    var jsonBody = json.stringify(data);
+    var resp = post(url, jsonBody, opts);
+    if (resp["body"] != null) {
+        resp["data"] = json.parse(resp["body"]);
+    }
+    return resp;
+}
+
+// Query Parameter builder
+fn buildQuery(params) {
+    if (params == null) { return ""; }
+    var parts = [];
+    for (key in params) {
+        var val = params[key];
+        parts.push(key + "=" + val);
+    }
+    return parts.join("&");
+}

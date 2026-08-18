@@ -42,8 +42,16 @@ int compileFile(const std::string& filename, const std::string& outputPath) {
     std::string stem = std::filesystem::path(filename).stem().string();
     std::string out = outputPath.empty() ? stem : outputPath;
 
-    std::string tmpCpp = "/tmp/sulfur_compile_" + stem + ".cpp";
-    std::string tmpBin = "/tmp/sulfur_compile_" + stem + "_bin";
+    std::filesystem::path tempDir = std::filesystem::temp_directory_path();
+    std::string tmpCpp = (tempDir / ("sulfur_compile_" + stem + ".cpp")).string();
+#ifdef _WIN32
+    if (out.size() < 4 || out.substr(out.size() - 4) != ".exe") {
+        out += ".exe";
+    }
+    std::string tmpBin = (tempDir / ("sulfur_compile_" + stem + ".exe")).string();
+#else
+    std::string tmpBin = (tempDir / ("sulfur_compile_" + stem + "_bin")).string();
+#endif
 
     std::string includePath = std::filesystem::absolute("include").string();
     std::string sulfurLibPath = std::filesystem::absolute("build").string();
@@ -59,6 +67,7 @@ int compileFile(const std::string& filename, const std::string& outputPath) {
             << "#include \"lexer.hpp\"\n"
             << "#include \"parser.hpp\"\n"
             << "#include \"error.hpp\"\n"
+            << "#include \"diagnostic.hpp\"\n"
             << "#include <iostream>\n"
             << "#include <string>\n\n"
             << "static const char* sfppSource = \"" << escapeForCpp(src) << "\";\n\n"
@@ -72,9 +81,13 @@ int compileFile(const std::string& filename, const std::string& outputPath) {
             << "        interp.injectBuiltinsIntoGlobal();\n"
             << "        interp.run(stmts, \"" << stem << ".sfpp\");\n"
             << "    } catch (SulfurError& e) {\n"
-            << "        std::cerr << \"\\033[31;1m[\" << e.code << \"] \";\n"
-            << "        if (e.line > 0) std::cerr << \"line \" << e.line << \": \";\n"
-            << "        std::cerr << e.what() << \"\\033[0m\\n\";\n"
+            << "        Diagnostic d{\n"
+            << "            (e.code.rfind(\"FE_\", 0) == 0) ? DiagnosticSeverity::FATAL :\n"
+            << "            (e.code.rfind(\"W_\", 0) == 0) ? DiagnosticSeverity::WARNING :\n"
+            << "            DiagnosticSeverity::ERROR,\n"
+            << "            e.code, e.what(), \"" << stem << ".sfpp\", e.line, e.col, 1, e.hint\n"
+            << "        };\n"
+            << "        DiagnosticEngine::render(d, std::cerr, true);\n"
             << "        return 1;\n"
             << "    } catch (std::exception& e) {\n"
             << "        std::cerr << \"\\033[31;1mError: \" << e.what() << \"\\033[0m\\n\";\n"
@@ -100,10 +113,16 @@ int compileFile(const std::string& filename, const std::string& outputPath) {
     }
 
     try {
+        auto parent = std::filesystem::path(out).parent_path();
+        if (!parent.empty()) {
+            std::filesystem::create_directories(parent);
+        }
         std::filesystem::copy_file(tmpBin, out, std::filesystem::copy_options::overwrite_existing);
+#ifndef _WIN32
         std::filesystem::permissions(out,
             std::filesystem::perms::owner_exec | std::filesystem::perms::group_exec | std::filesystem::perms::others_exec,
             std::filesystem::perm_options::add);
+#endif
     } catch (const std::exception& e) {
         std::cerr << "\033[31;1mError: Failed to copy binary: " << e.what() << "\033[0m\n";
         std::filesystem::remove(tmpBin);
@@ -111,6 +130,18 @@ int compileFile(const std::string& filename, const std::string& outputPath) {
     }
 
     std::filesystem::remove(tmpBin);
+
+#ifdef _WIN32
+    std::string dllSrc = sulfurLibPath + "/libsulfur.dll";
+    std::string outDir = std::filesystem::path(out).parent_path().string();
+    if (outDir.empty()) outDir = ".";
+    std::string dllDst = outDir + "/libsulfur.dll";
+    if (std::filesystem::exists(dllSrc) && dllSrc != dllDst) {
+        try {
+            std::filesystem::copy_file(dllSrc, dllDst, std::filesystem::copy_options::overwrite_existing);
+        } catch (...) {}
+    }
+#endif
 
     std::string stdSrc = "src/stdlib";
     std::string stdDst = std::filesystem::path(out).parent_path().string();

@@ -1,0 +1,47 @@
+import std/io as io;
+
+fn assert(cond, name) {
+    if (!cond) {
+        io.Terminal.Out << "FAIL: " << name << "\n";
+        throw "Assertion failed: " + name;
+    }
+    io.Terminal.Out << "PASS: " << name << "\n";
+}
+
+// 1. Valid operator rules verified by Semantic Analyzer
+var a: int = 10;
+var b: int = 20;
+var c: int = a + b;
+assert(c == 30, "int + int -> int");
+
+var f1: float = 3.5;
+var f2: float = a + f1;
+assert(f2 == 13.5, "int + float -> float");
+
+var f3: float = f1 + a;
+assert(f3 == 13.5, "float + int -> float");
+
+var s1: str = "Sulfur";
+var s2: str = "++";
+var s3: str = s1 + s2;
+assert(s3 == "Sulfur++", "str + str -> str");
+
+// 2. Typed Function signature verification
+fn addNumbers(x: int, y: int) -> int {
+    return x + y;
+}
+
+var sumRes: int = addNumbers(100, 200);
+assert(sumRes == 300, "Typed function call and return analysis");
+
+// 3. Loop Scoping and Control Flow
+var loopCounter = 0;
+for (i in [1, 2, 3, 4, 5]) {
+    if (i == 4) {
+        break;
+    }
+    loopCounter = loopCounter + 1;
+}
+assert(loopCounter == 3, "Semantic loop scope and break valid inside loop");
+
+io.Terminal.Out << "All semantic analyzer and type system tests passed!\n";

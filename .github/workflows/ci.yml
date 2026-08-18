@@ -1,0 +1,60 @@
+name: Sulfur++ CI / CD & Release Engine
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+  release:
+    types: [ published ]
+
+jobs:
+  build-and-test:
+    name: Build & Test on ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ ubuntu-latest, windows-latest, macos-latest ]
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Setup Ninja & CMake
+        uses: ashutoshvarma/setup-ninja@master
+        with:
+          version: 1.11.0
+
+      - name: Configure CMake (Linux / macOS)
+        if: runner.os != 'Windows'
+        run: |
+          cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DUSE_LLVM=OFF
+
+      - name: Build Project (Linux / macOS)
+        if: runner.os != 'Windows'
+        run: |
+          cmake --build build --config Release
+
+      - name: Run Test Suite (Linux / macOS)
+        if: runner.os != 'Windows'
+        run: |
+          ./build/combust tests/01_arithmetic.sfpp
+          ./build/combust tests/24_fuzzing_and_robustness.sfpp
+          ./build/sfpm test
+
+      - name: Run Performance Benchmarks (Linux / macOS)
+        if: runner.os != 'Windows'
+        run: |
+          ./build/sfpm bench
+
+      - name: Upload Release Binaries
+        if: github.event_name == 'release'
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ github.event.release.upload_url }}
+          asset_path: ./build/combust
+          asset_name: sulfur-combust-${{ matrix.os }}
+          asset_content_type: application/octet-stream
