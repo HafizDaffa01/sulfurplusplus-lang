@@ -111,13 +111,34 @@ static int runLint(const std::string& target) {
     return 0;
 }
 
+static std::string g_argv0;
+
+static std::string getCombustCmd() {
+    if (!g_argv0.empty()) {
+        try {
+            fs::path binDir = fs::path(g_argv0).parent_path();
+            if (!binDir.empty()) {
+                if (fs::exists(binDir / "combust.exe")) return (binDir / "combust.exe").string();
+                if (fs::exists(binDir / "combust")) return (binDir / "combust").string();
+            }
+        } catch (...) {}
+    }
+    if (fs::exists("build/combust")) return "./build/combust";
+    if (fs::exists("build/combust.exe")) return "build\\combust.exe";
+    if (fs::exists("./combust")) return "./combust";
+    if (fs::exists("combust.exe")) return "combust.exe";
+    if (fs::exists("combust.cmd")) return "combust.cmd";
+#ifdef _WIN32
+    return "combust.cmd";
+#else
+    return "combust";
+#endif
+}
+
 static int runBench() {
     if (fs::exists("benchmarks/run_benchmarks.sfpp")) {
-#ifdef _WIN32
-        return std::system("combust.cmd benchmarks/run_benchmarks.sfpp");
-#else
-        return std::system("combust benchmarks/run_benchmarks.sfpp");
-#endif
+        std::string cmd = getCombustCmd() + " benchmarks/run_benchmarks.sfpp";
+        return std::system(cmd.c_str());
     }
     std::cerr << "[sfpm] Benchmark script not found.\n";
     return 1;
@@ -188,11 +209,7 @@ static int runProject(const std::string& target) {
         }
     }
 
-#ifdef _WIN32
-    std::string cmd = "combust.cmd " + script;
-#else
-    std::string cmd = "combust " + script;
-#endif
+    std::string cmd = getCombustCmd() + " " + script;
     return std::system(cmd.c_str());
 }
 
@@ -207,11 +224,7 @@ static int testProject() {
     for (const auto& entry : fs::directory_iterator("tests")) {
         if (entry.path().extension() == ".sfpp") {
             std::string file = entry.path().string();
-#ifdef _WIN32
-            std::string cmd = "combust.cmd \"" + file + "\"";
-#else
-            std::string cmd = "combust \"" + file + "\"";
-#endif
+            std::string cmd = getCombustCmd() + " \"" + file + "\"";
             int res = std::system(cmd.c_str());
             if (res == 0) passed++;
             else failed++;
@@ -222,6 +235,9 @@ static int testProject() {
 }
 
 int main(int argc, char* argv[]) {
+    if (argc > 0 && argv[0]) {
+        g_argv0 = argv[0];
+    }
     if (argc < 2) {
         printHelp();
         return 0;

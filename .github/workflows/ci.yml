@@ -21,20 +21,34 @@ jobs:
       - name: Checkout Repository
         uses: actions/checkout@v4
 
+      - name: Install System Dependencies (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libcurl4-openssl-dev ninja-build
+
       - name: Setup Ninja & CMake
         uses: ashutoshvarma/setup-ninja@master
         with:
           version: 1.11.0
 
-      - name: Configure CMake (Linux / macOS)
-        if: runner.os != 'Windows'
+      - name: Configure CMake
         run: |
           cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DUSE_LLVM=OFF
 
-      - name: Build Project (Linux / macOS)
-        if: runner.os != 'Windows'
+      - name: Build Project
         run: |
           cmake --build build --config Release
+
+      - name: Add build directory to PATH (Linux / macOS)
+        if: runner.os != 'Windows'
+        run: |
+          echo "$PWD/build" >> $GITHUB_PATH
+
+      - name: Add build directory to PATH (Windows)
+        if: runner.os == 'Windows'
+        run: |
+          echo "$PWD/build" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
 
       - name: Run Test Suite (Linux / macOS)
         if: runner.os != 'Windows'
@@ -47,6 +61,18 @@ jobs:
         if: runner.os != 'Windows'
         run: |
           ./build/sfpm bench
+
+      - name: Run Test Suite (Windows)
+        if: runner.os == 'Windows'
+        run: |
+          .\build\combust.exe tests/01_arithmetic.sfpp
+          .\build\combust.exe tests/24_fuzzing_and_robustness.sfpp
+          .\build\sfpm.exe test
+
+      - name: Run Performance Benchmarks (Windows)
+        if: runner.os == 'Windows'
+        run: |
+          .\build\sfpm.exe bench
 
       - name: Upload Release Binaries
         if: github.event_name == 'release'
