@@ -24,12 +24,20 @@ public:
     std::vector<LintIssue> lint(const std::vector<StmtPtr>& stmts, const std::string& filename = "<linter>");
 
 private:
+    struct DeclaredVar {
+        std::string name;
+        int line;
+    };
+
     std::string filename_;
     std::vector<LintIssue> issues_;
-    std::unordered_set<std::string> declaredVars_;
+    std::vector<DeclaredVar> declaredVars_;
     std::unordered_set<std::string> usedVars_;
+    int scopeDepth_ = 0;
 
     void checkStmt(const Stmt& stmt);
     void checkExpr(const Expr& expr);
+    void checkFnDecl(const FnDeclStmt& node);
     void checkDeadCode(const std::vector<StmtPtr>& stmts);
+    void checkUnusedVars();
 };
