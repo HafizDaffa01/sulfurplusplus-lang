@@ -1,0 +1,47 @@
+import std/io as io;
+
+fn assert(cond, name) {
+    if (!cond) {
+        io.Terminal.Out << "FAIL: " << name << "\n";
+        throw "Assertion failed: " + name;
+    }
+    io.Terminal.Out << "PASS: " << name << "\n";
+}
+
+// 1. Valid typed variables
+var a: int_64 = 42;
+var b: float_64 = 3.14159;
+var c: str = "Sulfur++ Static Type Checker";
+var d: bool = true;
+var e: float_64 = 100; // int widening to float_64
+
+assert(a == 42, "Typed int_64 initialization");
+assert(b == 3.14159, "Typed float_64 initialization");
+assert(c == "Sulfur++ Static Type Checker", "Typed str initialization");
+assert(d == true, "Typed bool initialization");
+assert(e == 100.0, "Implicit int -> float_64 widening");
+
+// 2. Valid typed functions with matching parameters and return types
+fn addTyped(x: int_64, y: int_64): int_64 {
+    return x + y;
+}
+
+var res = addTyped(15, 25);
+assert(res == 40, "addTyped(15, 25) == 40");
+
+fn greet(name: str): str {
+    return "Hello, " + name;
+}
+
+var msg = greet("Developer");
+assert(msg == "Hello, Developer", "greet('Developer')");
+
+fn calculateArea(radius: float_64): float_64 {
+    var pi: float_64 = 3.14159265;
+    return pi * (radius ** 2);
+}
+
+var area = calculateArea(10.0);
+assert(area > 314.0 && area < 315.0, "calculateArea(10.0)");
+
+io.Terminal.Out << "All static type checker tests passed!\n";

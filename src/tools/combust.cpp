@@ -7,10 +7,13 @@
 #include <filesystem>
 #include "../include/lexer.hpp"
 #include "../include/parser.hpp"
+#include "../include/resolver.hpp"
+#include "../include/semantic/analyzer.hpp"
 #include "../include/version.hpp"
 #include "../include/interpreter.hpp"
 #include "../include/error.hpp"
 #include "../include/compiler.hpp"
+#include "../include/diagnostic.hpp"
 #include <iomanip>
 #include <csignal>
 
@@ -150,6 +153,13 @@ static int runFile(const std::string& filename, bool debug, bool watch, bool jit
             Parser par(std::move(tokens));
             auto stmts = par.parse();
 
+            SemanticAnalyzer sem;
+            sem.analyze(stmts, filename);
+
+            if (debug) {
+                std::cerr << "\n[DEBUG] Symbol Table & Scope Hierarchy:\n" << sem.dumpSymbols() << "\n";
+            }
+
             Interpreter interp(debug, jit);
             interp.injectBuiltinsIntoGlobal();
             interp.run(stmts, absPath);
@@ -160,14 +170,19 @@ static int runFile(const std::string& filename, bool debug, bool watch, bool jit
             }
             return 0;
         } catch (SulfurError& e) {
-            std::string colorCode = "\033[31;1m";
-            if (e.code.rfind("FE_", 0) == 0) colorCode = "\033[35;1m";
-            else if (e.code.rfind("W_", 0) == 0) colorCode = "\033[33;1m";
-
-            std::string loc = e.line > 0 ? " line " + std::to_string(e.line) : "";
-            std::cerr << colorCode << "[" << e.code << "]" << loc << ": " << e.what() << "\033[0m\n";
-            printErrorContext(filename, e.line, colorCode);
-            if (!e.hint.empty()) std::cerr << "  \033[33mhint: " << e.hint << "\033[0m\n";
+            Diagnostic d{
+                (e.code.rfind("FE_", 0) == 0) ? DiagnosticSeverity::FATAL :
+                (e.code.rfind("W_", 0) == 0) ? DiagnosticSeverity::WARNING :
+                DiagnosticSeverity::ERROR,
+                e.code,
+                e.what(),
+                filename,
+                e.line,
+                e.col,
+                1,
+                e.hint
+            };
+            DiagnosticEngine::render(d, std::cerr, true);
             return 1;
         } catch (std::exception& e) {
             std::cerr << "\033[31;1mError: " << e.what() << "\033[0m\n";

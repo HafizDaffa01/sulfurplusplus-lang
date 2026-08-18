@@ -1,0 +1,36 @@
+// Example 2: File I/O, Path Manipulation, & Cryptography
+import std/io as io;
+import std/path as path;
+import std/crypto as crypto;
+
+io.Terminal.Out << "=== Sulfur++ File & Crypto Demo ===\n";
+
+var rawMessage = "Sulfur++ is a high-performance modern language!";
+var targetFile = "demo_output.txt";
+
+// 1. Tulis pesan ke file
+io.writeFile(targetFile, rawMessage);
+io.Terminal.Out << "Berhasil menulis file: " << targetFile << "\n";
+
+// 2. Baca kembali dari file
+var content = io.readFile(targetFile);
+io.Terminal.Out << "Isi file: " << content << "\n";
+
+// 3. Hitung SHA-256 Digest
+var hash = crypto.sha256(content);
+io.Terminal.Out << "SHA-256 Digest: " << hash << "\n";
+
+// 4. Encode ke Base64
+var b64 = crypto.base64Encode(content);
+io.Terminal.Out << "Base64 Encoded: " << b64 << "\n";
+
+// 5. Decode kembali
+var decoded = crypto.base64Decode(b64);
+io.Terminal.Out << "Base64 Decoded: " << decoded << "\n";
+
+// 6. Path check
+if (path.exists(targetFile)) {
+    io.Terminal.Out << "File terverifikasi ada. Ekstensi: " << path.ext(targetFile) << "\n";
+    io.deleteFile(targetFile);
+    io.Terminal.Out << "File sementara berhasil dibersihkan.\n";
+}

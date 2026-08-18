@@ -1,0 +1,29 @@
+import std/io as io;
+import std/math as math;
+
+fn assert(cond, name) {
+    if (!cond) {
+        io.Terminal.Out << "FAIL: " << name << "\n";
+        throw "Assertion failed: " + name;
+    }
+    io.Terminal.Out << "PASS: " << name << "\n";
+}
+
+// Integers
+assert(1 + 2 == 3, "1 + 2 == 3");
+assert(10 - 4 == 6, "10 - 4 == 6");
+assert(3 * 4 == 12, "3 * 4 == 12");
+assert(20 / 4 == 5, "20 / 4 == 5");
+assert(17 % 5 == 2, "17 % 5 == 2");
+
+// Precedence
+assert(2 + 3 * 4 == 14, "2 + 3 * 4 == 14");
+assert((2 + 3) * 4 == 20, "(2 + 3) * 4 == 20");
+
+// Float & Math
+var f = 3.5 + 2.5;
+assert(f == 6.0, "3.5 + 2.5 == 6.0");
+assert(math.sqrt(100) == 10.0, "math.sqrt(100) == 10.0");
+assert(math.abs(-42) == 42, "math.abs(-42) == 42");
+
+io.Terminal.Out << "All arithmetic tests passed!\n";

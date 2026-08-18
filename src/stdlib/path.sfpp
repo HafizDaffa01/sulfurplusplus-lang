@@ -1,0 +1,9 @@
+// std/path.sfpp
+export this as std/path;
+
+expose "path_join"     as join;
+expose "path_basename" as basename;
+expose "path_dirname"  as dirname;
+expose "path_ext"      as ext;
+expose "path_exists"   as exists;
+expose "path_isabs"    as isAbsolute;

@@ -2,6 +2,7 @@
 #include <string>
 #include <stdexcept>
 #include <memory>
+#include "diagnostic.hpp"
 
 // Error format: <SEVERITY>_<CATEGORY>_<CODE>
 // FE = fatal error, E = error, W = warning
@@ -10,31 +11,39 @@ struct SulfurError : public std::runtime_error {
     std::string code;
     std::string hint; // optional hint for the user
     int line;
+    int col;
 
     SulfurError(const std::string& code, const std::string& msg, int line = -1,
-                const std::string& hint = "")
-        : std::runtime_error(msg), code(code), hint(hint), line(line) {}
+                const std::string& hint = "", int col = 1)
+        : std::runtime_error(msg), code(code), hint(hint), line(line), col(col) {}
 };
 
 struct LexError : public SulfurError {
     LexError(const std::string& msg, int line,
              const std::string& code = "E_LEX_400",
-             const std::string& hint = "")
-        : SulfurError(code, msg, line, hint) {}
+             const std::string& hint = "", int col = 1)
+        : SulfurError(code, msg, line, hint, col) {}
 };
 
 struct ParseError : public SulfurError {
     ParseError(const std::string& msg, int line,
                const std::string& code = "E_PARSE_400",
-               const std::string& hint = "")
-        : SulfurError(code, msg, line, hint) {}
+               const std::string& hint = "", int col = 1)
+        : SulfurError(code, msg, line, hint, col) {}
 };
 
 struct TypeError : public SulfurError {
     TypeError(const std::string& msg, int line = -1,
               const std::string& code = "E_TYPE_406",
-              const std::string& hint = "")
-        : SulfurError(code, msg, line, hint) {}
+              const std::string& hint = "", int col = 1)
+        : SulfurError(code, msg, line, hint, col) {}
+};
+
+struct SemanticError : public SulfurError {
+    SemanticError(const std::string& msg, int line = -1,
+                  const std::string& code = "E_SEMANTIC_400",
+                  const std::string& hint = "", int col = 1)
+        : SulfurError(code, msg, line, hint, col) {}
 };
 
 struct RuntimeError : public SulfurError {

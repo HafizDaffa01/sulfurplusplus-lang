@@ -1,0 +1,51 @@
+import std/io as io;
+import std/http as http;
+import std/time as time;
+import std/json as json;
+import std/path as path;
+
+fn assert(cond, name) {
+    if (!cond) {
+        io.Terminal.Out << "FAIL: " << name << "\n";
+        throw "Assertion failed: " + name;
+    }
+    io.Terminal.Out << "PASS: " << name << "\n";
+}
+
+// 1. HTTP Module Status Codes & Query Builder
+assert(http.STATUS_OK == 200, "HTTP STATUS_OK is 200");
+assert(http.STATUS_NOT_FOUND == 404, "HTTP STATUS_NOT_FOUND is 404");
+
+var q = http.buildQuery({"search": "sulfur", "page": "1"});
+assert(q == "search=sulfur&page=1" || q == "page=1&search=sulfur", "HTTP buildQuery");
+
+// 2. Time Module & Stopwatch
+var sw = new time.Stopwatch();
+time.delayMillis(20);
+var elapsed = sw.elapsedMillis();
+assert(elapsed >= 15, "Stopwatch measured elapsed time >= 15ms");
+
+sw.reset();
+var resetElapsed = sw.elapsedMillis();
+assert(resetElapsed < 10, "Stopwatch reset");
+
+// 3. JSON Module
+var user = {
+    "name": "Antigravity",
+    "version": 2,
+    "active": true,
+    "tags": ["lang", "compiler", "fast"]
+};
+var jsonStr = json.stringify(user);
+var parsedUser = json.parse(jsonStr);
+assert(parsedUser["name"] == "Antigravity", "JSON roundtrip string");
+assert(parsedUser["version"] == 2, "JSON roundtrip int");
+assert(parsedUser["active"] == true, "JSON roundtrip bool");
+assert(parsedUser["tags"].length() == 3, "JSON roundtrip list");
+
+// 4. Path Module
+assert(path.ext("main.sfpp") == ".sfpp", "path.ext");
+assert(path.basename("src/core/interpreter.cpp") == "interpreter.cpp", "path.basename");
+assert(path.dirname("src/core/interpreter.cpp") == "src/core", "path.dirname");
+
+io.Terminal.Out << "All standard library enhancement tests passed!\n";

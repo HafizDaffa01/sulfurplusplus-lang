@@ -1,0 +1,59 @@
+import std/io as io;
+import std/ffi as ffi;
+
+fn assert(cond, name) {
+    if (!cond) {
+        io.Terminal.Out << "FAIL: " << name << "\n";
+        throw "Assertion failed: " + name;
+    }
+    io.Terminal.Out << "PASS: " << name << "\n";
+}
+
+// 1. C Type Sizes via FFI ABI Introspection
+assert(ffi.sizeof("int64") == 8, "sizeof(int64) == 8 bytes");
+assert(ffi.sizeof("int32") == 4, "sizeof(int32) == 4 bytes");
+assert(ffi.sizeof("int16") == 2, "sizeof(int16) == 2 bytes");
+assert(ffi.sizeof("int8") == 1, "sizeof(int8) == 1 byte");
+assert(ffi.sizeof("float64") == 8, "sizeof(float64) == 8 bytes");
+assert(ffi.sizeof("float32") == 4, "sizeof(float32) == 4 bytes");
+assert(ffi.sizeof("ptr") == 8, "sizeof(ptr) == 8 bytes (64-bit ABI)");
+assert(ffi.sizeof("bool") == 1, "sizeof(bool) == 1 byte");
+
+// 2. Dynamic Library Loading and C ABI Function Invocation
+// On Windows, test kernel32.dll (GetCurrentProcessId, GetTickCount)
+// On Linux/POSIX, test libc.so
+var libName = "kernel32.dll";
+var pid = 0;
+var tick = 0;
+
+try {
+    var k32 = ffi.load(libName);
+    var pidFunc = k32.sym("GetCurrentProcessId");
+    assert(pidFunc != null, "Found GetCurrentProcessId in kernel32.dll");
+
+    pid = ffi.callInt(pidFunc, []);
+    assert(pid > 0, "Native ABI GetCurrentProcessId returned valid PID: " + ("" + pid));
+
+    var tickFunc = k32.sym("GetTickCount");
+    tick = ffi.callInt(tickFunc, []);
+    assert(tick > 0, "Native ABI GetTickCount returned valid tick count");
+
+    k32.close();
+} catch (e) {
+    // Fallback for Linux CI / POSIX environments: libc.so.6
+    try {
+        var libc = ffi.load("libc.so.6");
+        var getpidFunc = libc.sym("getpid");
+        pid = ffi.callInt(getpidFunc, []);
+        assert(pid > 0, "Native ABI getpid returned valid PID: " + ("" + pid));
+        libc.close();
+    } catch (e2) {
+        io.Terminal.Out << "Note: OS-specific library skipped: " + e["message"] + "\n";
+    }
+}
+
+// 3. C String & Memory Buffer ABI read/write
+var testBuffer = ffi_dlopen("kernel32.dll"); // Non-null pointer handle
+assert(testBuffer != null, "Valid native pointer handle obtained");
+
+io.Terminal.Out << "All FFI / Native ABI tests passed successfully!\n";

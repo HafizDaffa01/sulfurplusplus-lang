@@ -1,0 +1,31 @@
+import std/io as io;
+import std/math as math;
+import std/json as json;
+import std/string as str;
+
+fn assert(cond, name) {
+    if (!cond) {
+        io.Terminal.Out << "FAIL: " << name << "\n";
+        throw "Assertion failed: " + name;
+    }
+    io.Terminal.Out << "PASS: " << name << "\n";
+}
+
+// Math constants
+assert(math.PI > 3.14 && math.PI < 3.15, "math.PI range");
+assert(math.E > 2.71 && math.E < 2.72, "math.E range");
+assert(math.floor(5.8) == 5, "math.floor(5.8) == 5");
+assert(math.ceil(5.2) == 6, "math.ceil(5.2) == 6");
+
+// JSON parsing
+var jsonText = "{\"name\": \"Sulfur\", \"version\": 1, \"active\": true}";
+var parsed = json.parse(jsonText);
+assert(parsed["name"] == "Sulfur", "JSON parse name");
+assert(parsed["version"] == 1, "JSON parse version");
+assert(parsed["active"] == true, "JSON parse bool");
+
+// JSON stringify
+var encoded = json.stringify(parsed);
+assert(len(encoded) > 0, "JSON stringify not empty");
+
+io.Terminal.Out << "All standard library tests passed!\n";

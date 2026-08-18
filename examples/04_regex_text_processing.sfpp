@@ -1,0 +1,30 @@
+// Example 4: Regular Expressions, Log Parsing, & String Tokenization
+import std/io as io;
+import std/regex as regex;
+
+io.Terminal.Out << "=== Sulfur++ Regex & Log Analyzer Demo ===\n";
+
+var rawLogs = [
+    "[2026-08-18 14:00:01] INFO  User 'alice' logged in from IP 192.168.1.100",
+    "[2026-08-18 14:02:15] WARN  High CPU usage: 94% on core 2",
+    "[2026-08-18 14:05:40] ERROR Database connection timeout on port 5432",
+    "[2026-08-18 14:08:12] INFO  User 'bob' logged in from IP 10.0.0.52"
+];
+
+for (line in rawLogs) {
+    // 1. Cek level log
+    if (regex.match(".*\\bERROR\\b.*", line)) {
+        io.Terminal.Out << "[CRITICAL ALERT] " << line << "\n";
+    }
+    
+    // 2. Ekstrak IP Address
+    var ips = regex.findAll("\\b(?:\\d{1,3}\\.){3}\\d{1,3}\\b", line);
+    if (len(ips) > 0) {
+        io.Terminal.Out << "  -> Detected IP: " << ips[0] << "\n";
+    }
+}
+
+// 3. Sensor data sensitif (Masking)
+var secretDoc = "Customer cards: 4111-2222-3333-4444 and 5500-0000-1111-2222";
+var masked = regex.replace("\\d{4}-\\d{4}-\\d{4}-\\d{4}", "XXXX-XXXX-XXXX-XXXX", secretDoc);
+io.Terminal.Out << "\nMasked Data: " << masked << "\n";

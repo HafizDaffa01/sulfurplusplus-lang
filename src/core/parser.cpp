@@ -12,16 +12,49 @@ Token &Parser::peek(int offset) {
   return tokens_[i];
 }
 
+const Token &Parser::peek(int offset) const {
+  size_t i = pos_ + offset;
+  if (i >= tokens_.size())
+    return tokens_.back(); // EOF
+  return tokens_[i];
+}
+
 Token &Parser::advance() {
   if (!isAtEnd())
     pos_++;
   return tokens_[pos_ - 1];
 }
 
-bool Parser::check(TokenType t) const {
-  if (pos_ >= tokens_.size())
+bool Parser::isTypeToken(TokenType t) const {
+  switch (t) {
+    case TokenType::TYPE_INT8:    case TokenType::TYPE_INT16:
+    case TokenType::TYPE_INT32:   case TokenType::TYPE_INT64:
+    case TokenType::TYPE_UINT8:   case TokenType::TYPE_UINT16:
+    case TokenType::TYPE_UINT32:  case TokenType::TYPE_UINT64:
+    case TokenType::TYPE_FLOAT32: case TokenType::TYPE_FLOAT64:
+    case TokenType::TYPE_BOOL:    case TokenType::TYPE_CHAR:
+    case TokenType::TYPE_STR:     case TokenType::TYPE_VOID:
+    case TokenType::TYPE_LIST:    case TokenType::TYPE_SET:
+    case TokenType::TYPE_DICT:    case TokenType::TYPE_MATRIX:
+      return true;
+    default:
+      return false;
+  }
+}
+
+bool Parser::checkIdent() const {
+  if (isAtEnd())
     return false;
-  return tokens_[pos_].type == t;
+  TokenType t = peek().type;
+  return t == TokenType::IDENT || isTypeToken(t);
+}
+
+bool Parser::check(TokenType t) const {
+  if (isAtEnd())
+    return false;
+  if (t == TokenType::IDENT)
+    return checkIdent();
+  return peek().type == t;
 }
 
 bool Parser::match(TokenType t) {
@@ -219,10 +252,9 @@ StmtPtr Parser::parseFnDecl(bool isMethod) {
   auto params = parseParamList();
 
   std::string retType;
-  if (match(TokenType::COLON))
+  if (match(TokenType::COLON) || match(TokenType::ARROW))
     retType = parseType();
   else if (check(TokenType::IDENT) && peek().value == "->") {
-    // fn name() -> type  syntax alternative
     advance();
     retType = parseType();
   }
@@ -398,13 +430,45 @@ StmtPtr Parser::parseFor() {
   int line = peek().line;
   advance(); // 'for'
   expect(TokenType::LPAREN, "Expected '(' after 'for'");
-  std::string var = expect(TokenType::IDENT, "Expected loop variable").value;
-  expect(TokenType::IN, "Expected 'in' in for loop");
-  auto iterable = parseExpr();
-  expect(TokenType::RPAREN, "Expected ')' after for iterable");
+
+  // Check for-in syntax: IDENT 'in'
+  if (check(TokenType::IDENT) && pos_ + 1 < tokens_.size() && tokens_[pos_ + 1].type == TokenType::IN) {
+    std::string var = advance().value;
+    advance(); // 'in'
+    auto iterable = parseExpr();
+    expect(TokenType::RPAREN, "Expected ')' after for iterable");
+    auto body = parseBlock();
+    return std::make_unique<Stmt>(
+        ForStmt{var, std::move(iterable), std::move(body), line});
+  }
+
+  // C-style for: for (init; cond; post)
+  StmtPtr init = nullptr;
+  if (!check(TokenType::SEMICOLON)) {
+    if (check(TokenType::VAR) || check(TokenType::LET) || check(TokenType::AUTO)) {
+      init = parseVarDecl(peek().value);
+    } else {
+      init = parseExprStmt();
+    }
+  } else {
+    advance(); // consume ';'
+  }
+
+  ExprPtr cond = nullptr;
+  if (!check(TokenType::SEMICOLON)) {
+    cond = parseExpr();
+  }
+  expect(TokenType::SEMICOLON, "Expected ';' after for loop condition");
+
+  ExprPtr post = nullptr;
+  if (!check(TokenType::RPAREN)) {
+    post = parseExpr();
+  }
+  expect(TokenType::RPAREN, "Expected ')' after for loop clauses");
+
   auto body = parseBlock();
   return std::make_unique<Stmt>(
-      ForStmt{var, std::move(iterable), std::move(body), line});
+      ForCStyleStmt{std::move(init), std::move(cond), std::move(post), std::move(body), line});
 }
 
 StmtPtr Parser::parseReturn() {
@@ -438,8 +502,13 @@ StmtPtr Parser::parseImport() {
   }
 
   std::string alias;
-  if (match(TokenType::AS))
-    alias = expect(TokenType::IDENT, "Expected alias").value;
+  if (match(TokenType::AS)) {
+    if (!isAtEnd() && peek().type != TokenType::SEMICOLON && !peek().value.empty()) {
+      alias = advance().value;
+    } else {
+      alias = expect(TokenType::IDENT, "Expected alias").value;
+    }
+  }
 
   std::vector<std::string> flags;
   // --use=[FLAG1, FLAG2]
@@ -486,7 +555,12 @@ StmtPtr Parser::parseExpose() {
   
   std::string name = expect(TokenType::STRING_LIT, "Expected string literal after 'expose'").value;
   expect(TokenType::AS, "Expected 'as' after expose name");
-  std::string alias = expect(TokenType::IDENT, "Expected alias identifier").value;
+  std::string alias;
+  if (!isAtEnd() && peek().type != TokenType::SEMICOLON && !peek().value.empty()) {
+    alias = advance().value;
+  } else {
+    alias = expect(TokenType::IDENT, "Expected alias identifier").value;
+  }
   
   expect(TokenType::SEMICOLON, "Expected ';' after expose statement");
   return std::make_unique<Stmt>(ExposeStmt{name, alias, line});
@@ -651,8 +725,44 @@ ExprPtr Parser::parseOr() {
 
 ExprPtr Parser::parseAnd() {
   int line = peek().line;
-  auto left = parseEquality();
+  auto left = parseBitwiseOr();
   while (check(TokenType::AND)) {
+    std::string op = advance().value;
+    auto right = parseBitwiseOr();
+    left = std::make_unique<Expr>(
+        BinaryExpr{op, std::move(left), std::move(right), line});
+  }
+  return left;
+}
+
+ExprPtr Parser::parseBitwiseOr() {
+  int line = peek().line;
+  auto left = parseBitwiseXor();
+  while (check(TokenType::BIT_OR)) {
+    std::string op = advance().value;
+    auto right = parseBitwiseXor();
+    left = std::make_unique<Expr>(
+        BinaryExpr{op, std::move(left), std::move(right), line});
+  }
+  return left;
+}
+
+ExprPtr Parser::parseBitwiseXor() {
+  int line = peek().line;
+  auto left = parseBitwiseAnd();
+  while (check(TokenType::BIT_XOR)) {
+    std::string op = advance().value;
+    auto right = parseBitwiseAnd();
+    left = std::make_unique<Expr>(
+        BinaryExpr{op, std::move(left), std::move(right), line});
+  }
+  return left;
+}
+
+ExprPtr Parser::parseBitwiseAnd() {
+  int line = peek().line;
+  auto left = parseEquality();
+  while (check(TokenType::BIT_AND)) {
     std::string op = advance().value;
     auto right = parseEquality();
     left = std::make_unique<Expr>(
@@ -771,8 +881,16 @@ ExprPtr Parser::parsePostfix() {
       else if (opType == TokenType::OPT_CHAIN) opStr = "?.";
 
       advance();
-      std::string member =
-          expect(TokenType::IDENT, "Expected member name").value;
+      std::string member;
+      if (!isAtEnd() && peek().type != TokenType::LPAREN && peek().type != TokenType::RPAREN &&
+          peek().type != TokenType::LBRACKET && peek().type != TokenType::RBRACKET &&
+          peek().type != TokenType::LBRACE && peek().type != TokenType::RBRACE &&
+          peek().type != TokenType::SEMICOLON && peek().type != TokenType::COMMA &&
+          peek().type != TokenType::DOT && !peek().value.empty()) {
+        member = advance().value;
+      } else {
+        throw ParseError("Expected member name (got '" + peek().value + "')", peek().line);
+      }
       // If followed by (, it's a method call
       if (check(TokenType::LPAREN)) {
         advance();
@@ -839,12 +957,22 @@ ExprPtr Parser::parsePrimary() {
   }
 
   if (check(TokenType::INT_LIT)) {
-    auto val = std::stoll(advance().value);
-    return std::make_unique<Expr>(IntLitExpr{val, line});
+    std::string valStr = advance().value;
+    try {
+      auto val = std::stoll(valStr, nullptr, 0);
+      return std::make_unique<Expr>(IntLitExpr{val, line});
+    } catch (...) {
+      throw ParseError("Invalid integer literal: '" + valStr + "'", line);
+    }
   }
   if (check(TokenType::FLOAT_LIT)) {
-    auto val = std::stod(advance().value);
-    return std::make_unique<Expr>(FloatLitExpr{val, line});
+    std::string valStr = advance().value;
+    try {
+      auto val = std::stod(valStr);
+      return std::make_unique<Expr>(FloatLitExpr{val, line});
+    } catch (...) {
+      throw ParseError("Invalid float literal: '" + valStr + "'", line);
+    }
   }
   if (check(TokenType::TRUE_KW)) {
     advance();
@@ -871,11 +999,14 @@ ExprPtr Parser::parsePrimary() {
     return parsePSString(raw, line);
   }
 
-  // new ClassName(args)
+  // new ClassName(args) or new mod.ClassName(args)
   if (check(TokenType::NEW)) {
     advance();
     std::string className =
         expect(TokenType::IDENT, "Expected class name").value;
+    while (match(TokenType::DOT) || match(TokenType::DOUBLE_COLON)) {
+      className += "." + expect(TokenType::IDENT, "Expected identifier after '.'").value;
+    }
     expect(TokenType::LPAREN, "Expected '(' after class name");
     std::vector<ExprPtr> args;
     while (!check(TokenType::RPAREN) && !isAtEnd()) {

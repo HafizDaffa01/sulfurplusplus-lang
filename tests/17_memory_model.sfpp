@@ -1,0 +1,96 @@
+import std/io as io;
+
+fn assert(cond, name) {
+    if (!cond) {
+        io.Terminal.Out << "FAIL: " << name << "\n";
+        throw "Assertion failed: " + name;
+    }
+    io.Terminal.Out << "PASS: " << name << "\n";
+}
+
+// 1. Class with ordered lifecycle (+N> init, ~N> cleanup)
+var lifecycleEvents = [];
+
+class ResourcePool {
+    name;
+    active;
+
+    +1>initStep1;
+    fn initStep1(resName) {
+        this.name = resName;
+        lifecycleEvents.push("init1:" + this.name);
+    }
+
+    +2>initStep2;
+    fn initStep2(resName) {
+        this.active = true;
+        lifecycleEvents.push("init2:active");
+    }
+
+    ~1>cleanupStep1;
+    fn cleanupStep1() {
+        lifecycleEvents.push("cleanup1:flush");
+    }
+
+    ~2>cleanupStep2;
+    fn cleanupStep2() {
+        this.active = false;
+        lifecycleEvents.push("cleanup2:close");
+    }
+}
+
+var res = new ResourcePool("DatabaseConnection");
+assert(lifecycleEvents[0] == "init1:DatabaseConnection", "Constructor order +1");
+assert(lifecycleEvents[1] == "init2:active", "Constructor order +2");
+
+// Explicit delete triggering ordered destructor
+delete res;
+assert(lifecycleEvents[2] == "cleanup1:flush", "Destructor order ~1");
+assert(lifecycleEvents[3] == "cleanup2:close", "Destructor order ~2");
+assert(res == null, "Object reference cleared after delete");
+
+// 2. Defer LIFO Execution
+var deferLog = [];
+fn testDefer() {
+    defer {
+        deferLog.push("third_defer_runs_first");
+    }
+    defer {
+        deferLog.push("second_defer");
+    }
+    defer {
+        deferLog.push("first_defer_runs_last");
+    }
+    deferLog.push("function_body_executes");
+}
+
+testDefer();
+assert(deferLog[0] == "function_body_executes", "Body runs before defers");
+assert(deferLog[1] == "first_defer_runs_last", "Defer 3 runs in LIFO order");
+assert(deferLog[2] == "second_defer", "Defer 2 runs in LIFO order");
+assert(deferLog[3] == "third_defer_runs_first", "Defer 1 runs in LIFO order");
+
+// 3. Pointer Memory Model in Unsafe Block
+unsafe {
+    var rawInt = 100;
+    var pInt = &rawInt;
+    assert(*pInt == 100, "Pointer dereference *p == 100");
+
+    // Mutation via pointer
+    *pInt = 999;
+    assert(rawInt == 999, "Pointer mutation modifies original variable");
+}
+
+// 4. Null Pointer Dereference Safety
+var caughtNullPtr = false;
+try {
+    unsafe {
+        var nullPtr = null;
+        var val = *nullPtr;
+    }
+} catch (e) {
+    caughtNullPtr = (e["code"] == "E_TYPE_406" || e["code"] == "E_MEMORY_403");
+}
+assert(caughtNullPtr == true, "Null pointer dereference safely caught");
+
+io.Terminal.Out << "All memory model tests passed!\n";

@@ -1,0 +1,49 @@
+import std/io as io;
+
+fn assert(cond, name) {
+    if (!cond) {
+        io.Terminal.Out << "FAIL: " << name << "\n";
+        throw "Assertion failed: " + name;
+    }
+    io.Terminal.Out << "PASS: " << name << "\n";
+}
+
+// Class definition
+class Person {
+    name;
+    age;
+
+    +1>init;
+    fn init(n, a) {
+        this.name = n;
+        this.age = a;
+    }
+
+    fn greet() {
+        return "Hi, my name is " + this.name;
+    }
+
+    fn birthday() {
+        this.age = this.age + 1;
+        return this.age;
+    }
+}
+
+var p = new Person("Daffa", 22);
+assert(p.name == "Daffa", "p.name == 'Daffa'");
+assert(p.age == 22, "p.age == 22");
+assert(p.greet() == "Hi, my name is Daffa", "p.greet()");
+assert(p.birthday() == 23, "p.birthday() == 23");
+assert(p.age == 23, "p.age updated to 23");
+
+// Struct definition
+struct Point {
+    x: int_32;
+    y: int_32;
+}
+
+var pt = Point(10, 20);
+assert(pt.x == 10, "pt.x == 10");
+assert(pt.y == 20, "pt.y == 20");
+
+io.Terminal.Out << "All OOP & Struct tests passed!\n";

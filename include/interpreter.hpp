@@ -3,6 +3,7 @@
 #include <vector>
 #include <string>
 #include <unordered_map>
+#include <iostream>
 #include "ast.hpp"
 #include "value.hpp"
 #include "environment.hpp"
@@ -17,9 +18,20 @@ public:
     void setStderr(std::ostream* err) { stderr_ = err; }
     void setStdin(std::istream* in)   { stdin_  = in; }
 
+    struct StackFrame {
+        std::string functionName;
+        std::string filename;
+        int line;
+    };
+    const std::vector<StackFrame>& callStack() const { return callStack_; }
+    void printTraceback(std::ostream& os = std::cerr) const;
+
 private:
     std::shared_ptr<Environment> globalEnv_;
     std::shared_ptr<Environment> currentEnv_;
+
+    std::vector<StackFrame> callStack_;
+    int maxCallDepth_ = 500;
 
     // Private registry for native builtins, not exposed globally to users
     ValuePtr builtinsRegistry_;
@@ -65,6 +77,7 @@ private:
     void execIf(const IfStmt& s);
     void execWhile(const WhileStmt& s);
     void execFor(const ForStmt& s);
+    void execForCStyle(const ForCStyleStmt& s);
     void execReturn(const ReturnStmt& s);
     void execThrow(const ThrowStmt& s);
     void execStreamOut(const StreamOutStmt& s);

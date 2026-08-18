@@ -1,0 +1,83 @@
+import std/io as io;
+
+fn assert(cond, name) {
+    if (!cond) {
+        io.Terminal.Out << "FAIL: " << name << "\n";
+        throw "Assertion failed: " + name;
+    }
+    io.Terminal.Out << "PASS: " << name << "\n";
+}
+
+// 1. Reference Sharing for Heap Collections (List)
+var listA = [1, 2, 3];
+var listB = listA; // Reference alias: both point to the same heap object
+listB[0] = 99;
+assert(listA[0] == 99, "List assignment is reference sharing (Heap object alias)");
+
+// 2. Reference Sharing for Dictionaries
+var dictA = {"val": 100};
+var dictB = dictA;
+dictB["val"] = 500;
+assert(dictA["val"] == 500, "Dict assignment is reference sharing");
+
+// 3. Object Lifetime & Scope Escape Safety
+fn createCollection() {
+    var localData = [10, 20, 30];
+    return localData; // Safe heap return: refcount transferred to caller
+}
+
+var escapedData = createCollection();
+assert(escapedData[0] == 10, "Scope escape safety for heap collection");
+assert(len(escapedData) == 3, "Escaped collection size preserved");
+
+// 4. Value Types Copy Semantics (Primitives)
+var intVal1: int = 100;
+var intVal2: int = intVal1; // Stack copy-by-value
+intVal2 = 250;
+assert(intVal1 == 100, "Primitive int_64 is independent stack copy-by-value");
+
+// 5. Class Reference Sharing & RAII
+class Counter {
+    count;
+
+    +1>init;
+    fn init(initial) {
+        this.count = initial;
+    }
+
+    fn increment() {
+        this.count = this.count + 1;
+    }
+}
+
+var c1 = new Counter(10);
+var c2 = c1; // Reference sharing
+c2.increment();
+assert(c1.count == 11, "Class instance assignment is reference sharing");
+
+// 6. Unsafe Raw Pointer Semantics & Direct Mutation
+var targetValue = 42;
+unsafe {
+    var p = &targetValue;
+    *p = 999;
+}
+assert(targetValue == 999, "Unsafe pointer direct address mutation");
+
+// 7. Defer LIFO Execution Order
+var executionLog = [];
+fn testDeferLifecycle() {
+    defer {
+        executionLog.push("defer_1");
+    }
+    defer {
+        executionLog.push("defer_2");
+    }
+    executionLog.push("body_executed");
+}
+
+testDeferLifecycle();
+assert(executionLog[0] == "body_executed", "Body runs before defers");
+assert(executionLog[1] == "defer_2", "LIFO: Last defer runs first");
+assert(executionLog[2] == "defer_1", "LIFO: First defer runs last");
+
+io.Terminal.Out << "All formal Memory Model test assertions passed successfully!\n";

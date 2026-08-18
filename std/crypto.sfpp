@@ -1,0 +1,8 @@
+// std/crypto.sfpp
+export this as std/crypto;
+
+expose "crypto_sha256"        as sha256;
+expose "crypto_base64_encode" as base64Encode;
+expose "crypto_base64_decode" as base64Decode;
+expose "crypto_hex_encode"    as hexEncode;
+expose "crypto_hex_decode"    as hexDecode;

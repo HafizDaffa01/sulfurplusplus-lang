@@ -54,9 +54,16 @@ endif()
 set(CORE_SOURCES
     src/core/lexer.cpp
     src/core/parser.cpp
+    src/core/resolver.cpp
     src/core/interpreter.cpp
     src/core/environment.cpp
     src/core/value.cpp
+    src/core/semantic/type.cpp
+    src/core/semantic/symbol_table.cpp
+    src/core/semantic/type_checker.cpp
+    src/core/semantic/analyzer.cpp
+    src/core/formatter.cpp
+    src/core/linter.cpp
 )
 
 set(ALL_CORE_SOURCES ${CORE_SOURCES})
@@ -92,6 +99,27 @@ target_include_directories(combust PRIVATE include)
 target_link_libraries(combust PRIVATE sulfur)
 
 # -------------------------------------------------
+# sfpm executable (Package Manager)
+# -------------------------------------------------
+add_executable(sfpm src/tools/sfpm.cpp)
+target_include_directories(sfpm PRIVATE include)
+target_link_libraries(sfpm PRIVATE sulfur)
+
+# -------------------------------------------------
+# sulfur-lsp executable (Language Server Protocol)
+# -------------------------------------------------
+add_executable(sulfur-lsp src/tools/lsp.cpp)
+target_include_directories(sulfur-lsp PRIVATE include)
+target_link_libraries(sulfur-lsp PRIVATE sulfur)
+
+# -------------------------------------------------
+# sulfur-debug executable (Interactive Debugger)
+# -------------------------------------------------
+add_executable(sulfur-debug src/tools/debugger.cpp)
+target_include_directories(sulfur-debug PRIVATE include)
+target_link_libraries(sulfur-debug PRIVATE sulfur)
+
+# -------------------------------------------------
 # Copy stdlib
 # -------------------------------------------------
 add_custom_command(TARGET combust POST_BUILD
@@ -110,3 +138,17 @@ add_custom_target(run
     WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
     COMMENT "Launching Sulfur++ REPL..."
 )
+
+# -------------------------------------------------
+# Automated Testing (CTest)
+# -------------------------------------------------
+enable_testing()
+
+file(GLOB TEST_FILES "${CMAKE_CURRENT_SOURCE_DIR}/tests/*.sfpp")
+foreach(TEST_PATH ${TEST_FILES})
+    get_filename_component(TEST_NAME ${TEST_PATH} NAME_WE)
+    add_test(NAME ${TEST_NAME}
+             COMMAND combust ${TEST_PATH}
+             WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
+endforeach()
+

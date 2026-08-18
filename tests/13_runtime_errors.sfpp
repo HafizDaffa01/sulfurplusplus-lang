@@ -1,0 +1,58 @@
+import std/io as io;
+
+fn assert(cond, name) {
+    if (!cond) {
+        io.Terminal.Out << "FAIL: " << name << "\n";
+        throw "Assertion failed: " + name;
+    }
+    io.Terminal.Out << "PASS: " << name << "\n";
+}
+
+// 1. Division by zero (Integer)
+var caught1 = false;
+try {
+    var x = 100 / 0;
+} catch (e) {
+    caught1 = (e["code"] == "E_MATH_422");
+}
+assert(caught1 == true, "MathError on 100 / 0");
+
+// 2. Division by zero (Float)
+var caught2 = false;
+try {
+    var x = 5.5 / 0.0;
+} catch (e) {
+    caught2 = (e["code"] == "E_MATH_422");
+}
+assert(caught2 == true, "MathError on 5.5 / 0.0");
+
+// 3. Modulo by zero
+var caught3 = false;
+try {
+    var x = 10 % 0;
+} catch (e) {
+    caught3 = (e["code"] == "E_MATH_422");
+}
+assert(caught3 == true, "MathError on 10 % 0");
+
+// 4. List index out of bounds
+var caught4 = false;
+try {
+    var list = [1, 2, 3];
+    var x = list[999];
+} catch (e) {
+    caught4 = (e["code"] == "E_INDEX_416");
+}
+assert(caught4 == true, "IndexError on list[999]");
+
+// 5. String index out of bounds
+var caught5 = false;
+try {
+    var str = "abc";
+    var x = str[10];
+} catch (e) {
+    caught5 = (e["code"] == "E_INDEX_416");
+}
+assert(caught5 == true, "IndexError on str[10]");
+
+io.Terminal.Out << "All runtime error tests passed!\n";

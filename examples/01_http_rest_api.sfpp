@@ -1,0 +1,21 @@
+// Example 1: HTTP Client & JSON Processing in Sulfur++
+import std/io as io;
+import std/json as json;
+import std/http as http;
+
+io.Terminal.Out << "=== Sulfur++ HTTP Client Demo ===\n";
+
+// Mengambil data publik dari REST API
+try {
+    var client = new http.Client();
+    var res = client.get("https://httpbin.org/get");
+    
+    io.Terminal.Out << "Status: " << res.status << "\n";
+    io.Terminal.Out << "Response OK: " << res.ok << "\n";
+    
+    var data = json.parse(res.body);
+    io.Terminal.Out << "Origin IP: " << data["origin"] << "\n";
+    io.Terminal.Out << "User-Agent: " << data["headers"]["User-Agent"] << "\n";
+} catch (e) {
+    io.Terminal.Out << "Catatan: Koneksi internet diperlukan untuk request live (" << e["message"] << ")\n";
+}

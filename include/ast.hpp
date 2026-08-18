@@ -1,5 +1,6 @@
 #pragma once
 #include "token.hpp"
+#include <cstdint>
 #include <memory>
 #include <string>
 #include <variant>
@@ -214,6 +215,14 @@ struct ForStmt {
   int line;
 };
 
+struct ForCStyleStmt {
+  StmtPtr init;
+  ExprPtr cond;
+  ExprPtr post;
+  StmtPtr body;
+  int line;
+};
+
 struct ClassDeclStmt {
   std::string name;
   std::vector<std::string> interfaces;
@@ -307,7 +316,7 @@ struct MatchStmt {
 
 struct Stmt {
   std::variant<VarDeclStmt, FnDeclStmt, ReturnStmt, BreakStmt, ContinueStmt,
-               BlockStmt, IfStmt, WhileStmt, ForStmt, ClassDeclStmt,
+               BlockStmt, IfStmt, WhileStmt, ForStmt, ForCStyleStmt, ClassDeclStmt,
                StructDeclStmt, InterfaceDeclStmt, ExprStmt, StreamOutStmt,
                ImportStmt, ExportStmt, UnsafeStmt, DeferStmt, TryCatchStmt,
                ExposeStmt, OverwriteStmt, ThrowStmt, MatchStmt>

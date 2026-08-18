@@ -1,0 +1,7 @@
+// std/regex.sfpp
+export this as std/regex;
+
+expose "regex_match"   as match;
+expose "regex_search"  as search;
+expose "regex_replace" as replace;
+expose "regex_findall" as findAll;

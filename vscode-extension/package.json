@@ -1,0 +1,38 @@
+{
+  "name": "sulfurplusplus-vscode",
+  "displayName": "Sulfur++ Language Support",
+  "description": "Official syntax highlighting, LSP integration, and debugging support for Sulfur++ (.sfpp)",
+  "version": "1.0.0",
+  "publisher": "sulfur-lang",
+  "engines": {
+    "vscode": "^1.75.0"
+  },
+  "categories": [
+    "Programming Languages",
+    "Linters",
+    "Snippets"
+  ],
+  "contributes": {
+    "languages": [
+      {
+        "id": "sulfur",
+        "aliases": ["Sulfur++", "sulfur", "sfpp"],
+        "extensions": [".sfpp", ".spp"],
+        "configuration": "./language-configuration.json"
+      }
+    ],
+    "grammars": [
+      {
+        "language": "sulfur",
+        "scopeName": "source.sfpp",
+        "path": "./syntaxes/sulfur.tmLanguage.json"
+      }
+    ],
+    "snippets": [
+      {
+        "language": "sulfur",
+        "path": "./snippets.json"
+      }
+    ]
+  }
+}

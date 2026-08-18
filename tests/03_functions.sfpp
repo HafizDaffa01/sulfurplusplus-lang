@@ -1,0 +1,44 @@
+import std/io as io;
+
+fn assert(cond, name) {
+    if (!cond) {
+        io.Terminal.Out << "FAIL: " << name << "\n";
+        throw "Assertion failed: " + name;
+    }
+    io.Terminal.Out << "PASS: " << name << "\n";
+}
+
+// Basic function
+fn add(a, b) {
+    return a + b;
+}
+assert(add(15, 27) == 42, "add(15, 27) == 42");
+
+// Recursion (Fibonacci)
+fn fib(n) {
+    if (n <= 1) { return n; }
+    return fib(n - 1) + fib(n - 2);
+}
+assert(fib(7) == 13, "fib(7) == 13");
+
+// Closure
+fn makeAdder(x) {
+    return fn(y) {
+        return x + y;
+    };
+}
+var add10 = makeAdder(10);
+assert(add10(5) == 15, "Closure add10(5) == 15");
+
+// Defer test
+var deferFlag = 0;
+fn testDefer() {
+    defer {
+        deferFlag = 42;
+    }
+    assert(deferFlag == 0, "Inside testDefer before return");
+}
+testDefer();
+assert(deferFlag == 42, "After testDefer defer executed");
+
+io.Terminal.Out << "All function tests passed!\n";
