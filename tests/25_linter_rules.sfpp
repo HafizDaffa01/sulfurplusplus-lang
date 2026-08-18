@@ -1,0 +1,105 @@
+import std/io as io;
+
+fn assert(cond, name) {
+    if (!cond) {
+        io.Terminal.Out << "FAIL: " << name << "\n";
+        throw "Assertion failed: " + name;
+    }
+    io.Terminal.Out << "PASS: " << name << "\n";
+}
+
+// Linter fixture. Every variable below is read through a different AST node, so
+// `sfpm lint tests/25_linter_rules.sfpp` must report W_UNUSED_VAR exactly once,
+// for 'neverRead'. Any extra W_UNUSED_VAR means the traversal missed a node type.
+// Only block scoped names are judged, since top level names are exported.
+
+// Index expression
+var indexed = [10, 20, 30];
+assert(indexed[1] == 20, "Read through index expression");
+
+// Dictionary literal
+var dictValue = "Sulfur++";
+var dict = {"lang": dictValue};
+assert(dict["lang"] == "Sulfur++", "Read through dict literal");
+
+// Member expression
+class Box {
+    val;
+    +1>init;
+    fn init(start) {
+        this.val = start;
+    }
+}
+var box = new Box(7);
+assert(box.val == 7, "Read through member expression");
+
+// Ternary expression
+var ternaryLeft = 1;
+var ternaryRight = 2;
+var picked = ternaryLeft < ternaryRight ? ternaryLeft : ternaryRight;
+assert(picked == 1, "Read through ternary expression");
+
+// Null coalescing expression
+var maybeNull = null;
+var fallback = 99;
+var coalesced = maybeNull ?? fallback;
+assert(coalesced == 99, "Read through null coalescing expression");
+
+// PS-string interpolation
+var interpolated = "world";
+assert(ps"hello {interpolated}" == "hello world", "Read through ps-string segment");
+
+// Lambda body
+var factor = 3;
+var scale = fn(n) { return n * factor; };
+assert(scale(4) == 12, "Read through lambda body");
+
+// Match statement
+var matchTarget = 200;
+var matched = 0;
+match (matchTarget) {
+    200 => { matched = 1; }
+    _ => { matched = 2; }
+}
+assert(matched == 1, "Read through match statement");
+
+// Try / catch / defer bodies
+var tryValue = 5;
+var caught = 0;
+try {
+    throw "boom";
+} catch (e) {
+    caught = tryValue;
+}
+assert(caught == 5, "Read through catch body");
+
+var deferValue = 8;
+var deferred = 0;
+fn runDefer() {
+    defer {
+        deferred = deferValue;
+    }
+    return 0;
+}
+runDefer();
+assert(deferred == 8, "Read through defer body");
+
+// C-style for header
+var limit = 4;
+var cSum = 0;
+for (var i = 1; i <= limit; i = i + 1) {
+    cSum = cSum + i;
+}
+assert(cSum == 10, "Read through C-style for header");
+
+// Block scoped declarations: '_ignored' is exempt by its prefix, 'neverRead' is the
+// single expected W_UNUSED_VAR report, and 'read' must not be reported.
+fn unusedFixture() {
+    var _ignored = 1;
+    var neverRead = 42;
+    var read = 7;
+    return read;
+}
+assert(unusedFixture() == 7, "Block scoped declarations still execute");
+
+io.Terminal.Out << "All linter rule tests passed!\n";
