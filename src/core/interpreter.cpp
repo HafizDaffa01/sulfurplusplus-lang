@@ -41,7 +41,13 @@ static char* win_dlerror() {
 #else
 #include <dlfcn.h>
 #endif
-#include <curl/curl.h>
+
+#if defined(__has_include)
+  #if __has_include(<curl/curl.h>)
+    #include <curl/curl.h>
+    #define SFPP_HAS_CURL 1
+  #endif
+#endif
 #include <regex>
 #include "diagnostic.hpp"
 
@@ -294,6 +300,7 @@ std::string Interpreter::readLine() {
   return line;
 }
 
+#ifdef SFPP_HAS_CURL
 // libcurl callbacks for HTTP client
 static size_t writeCallback(void* contents, size_t size, size_t nmemb, void* userp) {
   ((std::string*)userp)->append((char*)contents, size * nmemb);
@@ -314,6 +321,7 @@ static size_t headerCallback(void* contents, size_t size, size_t nmemb, void* us
   }
   return size * nmemb;
 }
+#endif
 
 // Try to load a native module (.so/.dylib/.dll)
 // Returns true if successfully loaded, false otherwise
@@ -4201,6 +4209,7 @@ void Interpreter::registerBuiltins() {
       }
     }
 
+#ifdef SFPP_HAS_CURL
     CURL* curl = curl_easy_init();
     if (!curl) throw RuntimeError("Failed to initialize curl");
 
@@ -4268,6 +4277,9 @@ void Interpreter::registerBuiltins() {
     respDict->set("body", makeStr(response));
 
     return makeDict(respDict);
+#else
+    throw RuntimeError("http_request: libcurl is not enabled in this build.");
+#endif
   });
 
   // Low-level native used by the sfpp-side Alias class (src/stdlib/alias.sfpp)
