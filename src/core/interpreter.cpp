@@ -765,26 +765,187 @@ void Interpreter::execFor(const ForStmt &s) {
   }
 }
 
+// Does evaluating this node build a function value that closes over the current
+// scope? Only such a body can tell one loop iteration's scope from another, so the
+// answer decides whether a C-style loop pays for a scope per iteration.
+static bool createsFunction(const Expr &e) {
+  static_assert(std::variant_size_v<decltype(Expr::data)> == 24,
+                "createsFunction must consider every expression node");
+  return std::visit(
+      [](const auto &node) -> bool {
+        using T = std::decay_t<decltype(node)>;
+        if constexpr (std::is_same_v<T, LambdaExpr>)
+          return true;
+        else if constexpr (std::is_same_v<T, BinaryExpr> ||
+                           std::is_same_v<T, NullCoalExpr> ||
+                           std::is_same_v<T, PipelineExpr>)
+          return (node.left && createsFunction(*node.left)) ||
+                 (node.right && createsFunction(*node.right));
+        else if constexpr (std::is_same_v<T, UnaryExpr> ||
+                           std::is_same_v<T, AddrOfExpr> ||
+                           std::is_same_v<T, DerefExpr> ||
+                           std::is_same_v<T, DeleteExpr>)
+          return node.operand && createsFunction(*node.operand);
+        else if constexpr (std::is_same_v<T, AssignExpr>)
+          return (node.target && createsFunction(*node.target)) ||
+                 (node.value && createsFunction(*node.value));
+        else if constexpr (std::is_same_v<T, IndexExpr>)
+          return (node.object && createsFunction(*node.object)) ||
+                 (node.index && createsFunction(*node.index));
+        else if constexpr (std::is_same_v<T, MemberExpr>)
+          return node.object && createsFunction(*node.object);
+        else if constexpr (std::is_same_v<T, TernaryExpr>)
+          return (node.cond && createsFunction(*node.cond)) ||
+                 (node.thenExpr && createsFunction(*node.thenExpr)) ||
+                 (node.elseExpr && createsFunction(*node.elseExpr));
+        else if constexpr (std::is_same_v<T, CallExpr> ||
+                           std::is_same_v<T, NewExpr>) {
+          if constexpr (std::is_same_v<T, CallExpr>)
+            if (node.callee && createsFunction(*node.callee))
+              return true;
+          for (const auto &a : node.args)
+            if (a && createsFunction(*a))
+              return true;
+          return false;
+        } else if constexpr (std::is_same_v<T, ListLitExpr>) {
+          for (const auto &el : node.elements)
+            if (el && createsFunction(*el))
+              return true;
+          return false;
+        } else if constexpr (std::is_same_v<T, DictLitExpr>) {
+          for (const auto &p : node.pairs)
+            if ((p.first && createsFunction(*p.first)) ||
+                (p.second && createsFunction(*p.second)))
+              return true;
+          return false;
+        } else if constexpr (std::is_same_v<T, PSStringExpr>) {
+          for (const auto &seg : node.segments)
+            if (seg.isExpr && seg.expr && createsFunction(*seg.expr))
+              return true;
+          return false;
+        } else
+          return false; // literals and plain identifiers
+      },
+      e.data);
+}
+
+static bool createsFunction(const Stmt &s) {
+  static_assert(std::variant_size_v<decltype(Stmt::data)> == 24,
+                "createsFunction must consider every statement node");
+  return std::visit(
+      [](const auto &node) -> bool {
+        using T = std::decay_t<decltype(node)>;
+        if constexpr (std::is_same_v<T, FnDeclStmt> ||
+                      std::is_same_v<T, ClassDeclStmt> ||
+                      std::is_same_v<T, InterfaceDeclStmt>)
+          return true;
+        else if constexpr (std::is_same_v<T, VarDeclStmt>)
+          return node.initializer && createsFunction(*node.initializer);
+        else if constexpr (std::is_same_v<T, ReturnStmt> ||
+                           std::is_same_v<T, ThrowStmt> ||
+                           std::is_same_v<T, OverwriteStmt>)
+          return node.value && createsFunction(*node.value);
+        else if constexpr (std::is_same_v<T, ExprStmt>)
+          return node.expr && createsFunction(*node.expr);
+        else if constexpr (std::is_same_v<T, StreamOutStmt>)
+          return (node.target && createsFunction(*node.target)) ||
+                 (node.value && createsFunction(*node.value));
+        else if constexpr (std::is_same_v<T, UnsafeStmt> ||
+                           std::is_same_v<T, DeferStmt>)
+          return node.body && createsFunction(*node.body);
+        else if constexpr (std::is_same_v<T, IfStmt>)
+          return (node.cond && createsFunction(*node.cond)) ||
+                 (node.thenBranch && createsFunction(*node.thenBranch)) ||
+                 (node.elseBranch && createsFunction(*node.elseBranch));
+        else if constexpr (std::is_same_v<T, WhileStmt>)
+          return (node.cond && createsFunction(*node.cond)) ||
+                 (node.body && createsFunction(*node.body));
+        else if constexpr (std::is_same_v<T, ForStmt>)
+          return (node.iterable && createsFunction(*node.iterable)) ||
+                 (node.body && createsFunction(*node.body));
+        else if constexpr (std::is_same_v<T, ForCStyleStmt>)
+          return (node.init && createsFunction(*node.init)) ||
+                 (node.cond && createsFunction(*node.cond)) ||
+                 (node.post && createsFunction(*node.post)) ||
+                 (node.body && createsFunction(*node.body));
+        else if constexpr (std::is_same_v<T, TryCatchStmt>)
+          return (node.tryBody && createsFunction(*node.tryBody)) ||
+                 (node.catchBody && createsFunction(*node.catchBody)) ||
+                 (node.finallyBody && createsFunction(*node.finallyBody));
+        else if constexpr (std::is_same_v<T, BlockStmt>) {
+          for (const auto &st : node.stmts)
+            if (st && createsFunction(*st))
+              return true;
+          return false;
+        } else if constexpr (std::is_same_v<T, MatchStmt>) {
+          if (node.value && createsFunction(*node.value))
+            return true;
+          for (const auto &c : node.cases)
+            if ((c.pattern && createsFunction(*c.pattern)) ||
+                (c.body && createsFunction(*c.body)))
+              return true;
+          return false;
+        } else
+          return false; // break, continue, struct, import, export, expose
+      },
+      s.data);
+}
+
 void Interpreter::execForCStyle(const ForCStyleStmt &s) {
   trace("ForCStyle: starting loop");
   pushEnv();
+  auto loopEnv = currentEnv_;
   if (s.init) {
     execStmt(*s.init);
   }
+
+  // Only a body that builds a closure can tell iterations apart, so every other
+  // loop keeps running in the single loop scope. That leaves the address of a
+  // loop variable stable for the whole loop, as it was before per-iteration
+  // scopes existed, and spares plain loops the extra scope per turn.
+  const bool perIterationScope = s.body && createsFunction(*s.body);
+
   while (true) {
     if (s.cond) {
       auto cond = evalExpr(*s.cond);
       if (!cond.truthy())
         break;
     }
+
+    // The iteration scope holds a copy of the loop variables, so a closure
+    // created in the body keeps the value that iteration saw instead of the
+    // value left behind when the loop ends.
+    std::shared_ptr<Environment> iterEnv;
+    if (perIterationScope) {
+      pushEnv();
+      iterEnv = currentEnv_;
+      for (const auto &entry : loopEnv->vars())
+        iterEnv->define(entry.first, entry.second.value, entry.second.mutable_);
+    }
+
+    bool stop = false;
     try {
       execStmt(*s.body);
     } catch (BreakSignal &) {
       trace("ForCStyle: caught break");
-      break;
+      stop = true;
     } catch (ContinueSignal &) {
       trace("ForCStyle: caught continue");
     }
+
+    // Carry writes made by the body back before the condition and post
+    // expression are evaluated against the loop scope again.
+    if (iterEnv) {
+      for (auto &entry : loopEnv->vars()) {
+        auto it = iterEnv->vars().find(entry.first);
+        if (it != iterEnv->vars().end())
+          entry.second.value = it->second.value;
+      }
+      popEnv();
+    }
+
+    if (stop)
+      break;
     if (s.post) {
       evalExpr(*s.post);
     }
