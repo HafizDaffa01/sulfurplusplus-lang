@@ -1,0 +1,156 @@
+import std/io as io;
+
+fn assert(cond, name) {
+    if (!cond) {
+        io.Terminal.Out << "FAIL: " << name << "\n";
+        throw "Assertion failed: " + name;
+    }
+    io.Terminal.Out << "PASS: " << name << "\n";
+}
+
+// 1. Capture of an enclosing parameter
+fn makeAdder(x) {
+    return fn(y) { return x + y; };
+}
+var add10 = makeAdder(10);
+assert(add10(5) == 15, "Lambda captures enclosing parameter");
+
+// 2. A captured variable stays writable
+fn makeCounter() {
+    var n = 0;
+    return fn() {
+        n = n + 1;
+        return n;
+    };
+}
+var counter = makeCounter();
+counter();
+counter();
+assert(counter() == 3, "Captured variable is mutated across calls");
+
+// 3. Each call captures its own binding
+var counterA = makeCounter();
+var counterB = makeCounter();
+counterA();
+counterA();
+assert(counterB() == 1, "Separate calls do not share captured state");
+
+// 4. Two closures over one variable share it
+fn makePair() {
+    var shared = 0;
+    var inc = fn() { shared = shared + 1; return shared; };
+    var read = fn() { return shared; };
+    return [inc, read];
+}
+var pair = makePair();
+var incShared = pair[0];
+var readShared = pair[1];
+incShared();
+incShared();
+assert(readShared() == 2, "Closures over one variable share it");
+
+// 5. C-style loop: one binding per iteration
+var loopFns = [];
+for (var i = 0; i < 3; i = i + 1) {
+    loopFns = loopFns + [fn() { return i; }];
+}
+var loop0 = loopFns[0];
+var loop1 = loopFns[1];
+var loop2 = loopFns[2];
+assert(loop0() == 0, "C-style loop capture keeps iteration 0");
+assert(loop1() == 1, "C-style loop capture keeps iteration 1");
+assert(loop2() == 2, "C-style loop capture keeps iteration 2");
+
+// 6. Per-iteration capture still holds when the loop breaks early
+var brokenFns = [];
+for (var i = 0; i < 5; i = i + 1) {
+    brokenFns = brokenFns + [fn() { return i; }];
+    if (i == 2) { break; }
+}
+var broken0 = brokenFns[0];
+var broken2 = brokenFns[2];
+assert(broken0() == 0, "Capture before an early break keeps iteration 0");
+assert(broken2() == 2, "Capture on the breaking iteration keeps its value");
+
+// 7. The loop header still sees writes made by the body
+var jumps = 0;
+for (var i = 0; i < 10; i = i + 1) {
+    i = i + 1;
+    jumps = jumps + 1;
+}
+assert(jumps == 5, "Body writes to the loop variable reach the post step");
+
+// 8. A header without a declaration keeps using the outer variable
+var outerIndex = 0;
+var outerRounds = 0;
+for (; outerIndex < 4; outerIndex = outerIndex + 1) {
+    outerRounds = outerRounds + 1;
+}
+assert(outerRounds == 4, "Header without a declaration iterates correctly");
+assert(outerIndex == 4, "Outer variable keeps its value after the loop");
+
+// 9. for-in loop: one binding per iteration
+var iterFns = [];
+for (v in [10, 20, 30]) {
+    iterFns = iterFns + [fn() { return v; }];
+}
+var iter0 = iterFns[0];
+var iter2 = iterFns[2];
+assert(iter0() == 10, "for-in capture keeps the first element");
+assert(iter2() == 30, "for-in capture keeps the last element");
+
+// 10. Capture of a block scoped variable
+var blockFns = [];
+{
+    var inner = "block";
+    blockFns = blockFns + [fn() { return inner; }];
+}
+var blockFn = blockFns[0];
+assert(blockFn() == "block", "Closure captures a block scoped variable");
+
+// 11. Nested closures capture every enclosing level
+fn outer(a) {
+    return fn(b) {
+        return fn(c) { return a + b + c; };
+    };
+}
+var middle = outer(1);
+var innermost = middle(2);
+assert(innermost(3) == 6, "Nested closures capture every level");
+
+// 12. A named function declared inside a function captures its scope
+fn makeScaler(seed) {
+    fn scale(k) { return seed * k; }
+    return scale;
+}
+var scaler = makeScaler(4);
+assert(scaler(3) == 12, "Named inner function captures enclosing scope");
+
+// 13. Recursion through a captured binding
+fn makeFactorial() {
+    var factorial = fn(n) {
+        if (n <= 1) { return 1; }
+        return n * factorial(n - 1);
+    };
+    return factorial;
+}
+var factorial = makeFactorial();
+assert(factorial(5) == 120, "Lambda recurses through its captured binding");
+
+// 14. A body that builds no closure keeps its single loop scope, so the address of
+// a loop variable stays valid for the whole loop
+var addrBox = [];
+var addrSeen = [];
+for (var i = 0; i < 4; i = i + 1) {
+    if (i == 0) {
+        addrBox = addrBox + [&i];
+    }
+    if (i > 0) {
+        var readBack = addrBox[0];
+        addrSeen = addrSeen + [*readBack];
+    }
+}
+assert(addrSeen[0] == 1, "Address of a loop variable survives into iteration 1");
+assert(addrSeen[2] == 3, "Address of a loop variable survives to the last iteration");
+
+io.Terminal.Out << "All closure capture tests passed!\n";
