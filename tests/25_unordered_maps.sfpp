@@ -1,0 +1,21 @@
+import std/map_unordered as maps;
+import std/io as io;
+
+fn assert(cond, name) {
+    if (!cond) {
+        io.Terminal.Out << "FAIL: " << name << "\n";
+        throw "Assertion failed: " + name;
+    }
+    io.Terminal.Out << "PASS: " << name << "\n";
+}
+
+var map = new maps.Map_Unordered();
+
+var result = map.add("Aku", "Ini");
+assert(result == true, "BERHASIL TERDAFTAR");
+
+var check = map.check("Aku");
+assert(check == "Ini", "BERHASIL MENDETEKSI");
+
+var f = map.drop("Aku");
+assert(f == true, "BERHASIL MENGHAPUS");

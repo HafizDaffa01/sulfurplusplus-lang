@@ -1,0 +1,54 @@
+export this as std/map_unordered;
+
+
+class Map_Unordered {
+    Value = [];
+    Indexer = [];
+
+    fn add(indexer: str, value){
+        try {
+            Value.push(value);
+            Indexer.push(indexer);
+        } catch(e)
+        {
+            return false;
+        }
+        return true;
+    }
+
+    fn drop(indexer: str){
+        try {
+            var point = -1;
+            for (K in Indexer){
+                point = point + 1;
+                if(K == indexer){
+                    exit;
+                }
+            }
+            Indexer.pop(point);
+            Value.pop(point);
+            point = 0;
+        } catch(e)
+        {
+            return false;
+        }
+        return true;
+    }
+
+    fn check(indexer: str){
+        try {
+            var point = -1;
+            for (K in Indexer){
+                point = point + 1;
+                if(K == indexer){
+                    exit;
+                }
+            }
+            point = 0;
+            return Value[point];
+        } catch(e)
+        {
+            return "";
+        }
+    }
+}
