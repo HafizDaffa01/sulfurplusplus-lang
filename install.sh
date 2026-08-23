@@ -20,6 +20,10 @@ if command -v apt-get >/dev/null 2>&1; then
 elif command -v pacman >/dev/null 2>&1; then
   echo "Using pacman..."
   pacman -Sy --noconfirm git llvm clang make gcc g++ cmake libedit
+elif command -v moss >/dev/null 2>&1; then 
+  echo "Using moss"
+  sudo moss install -y git llvm clang make gcc g++ cmake libedit libedit-devel
+
 else
   echo "Unsupported package manager. Please install git, llvm, clang, g++, cmake, libedit-dev manually."
   exit 1
