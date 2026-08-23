@@ -31,7 +31,7 @@ fi
 
 echo "[Installer] Running build..."
 mkdir -p build
-cmake -S . -B build
+cmake -S . -DCMAKE_EXPORT_COMPILE_COMMANDS=ON  -B build
 cmake --build build -- -j$(nproc)
 
 echo "[Installer] Build completed."
