@@ -2,7 +2,7 @@ name: Sulfur++ CI / CD & Release Engine
 
 on:
   push:
-    branches: [ main, master ]
+    branches: [ main, master, feature/* ]
   pull_request:
     branches: [ main, master ]
   release:
@@ -50,24 +50,51 @@ jobs:
         run: |
           echo "$PWD/build" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
 
-      - name: Run Test Suite (Linux / macOS)
+      - name: Run Code Linter (Linux / macOS)
         if: runner.os != 'Windows'
         run: |
-          ./build/combust tests/01_arithmetic.sfpp
-          ./build/combust tests/24_fuzzing_and_robustness.sfpp
-          ./build/sfpm test
+          ./build/sfpm lint
+
+      - name: Run Code Linter (Windows)
+        if: runner.os == 'Windows'
+        run: |
+          .\build\sfpm.exe lint
+
+      - name: Run Full Test Suite (Linux / macOS)
+        if: runner.os != 'Windows'
+        run: |
+          chmod +x ./run_tests.sh || true
+          if [ -f "./run_tests.sh" ]; then
+            ./run_tests.sh
+          else
+            ./build/sfpm test
+          fi
+
+      - name: Run Full Test Suite (Windows)
+        if: runner.os == 'Windows'
+        run: |
+          if (Test-Path "run_tests.cmd") {
+            .\run_tests.cmd
+          } else {
+            .\build\sfpm.exe test
+          }
+
+      - name: Verify Standalone AOT Compilation (Linux / macOS)
+        if: runner.os != 'Windows'
+        run: |
+          ./build/combust --compile tests/01_arithmetic.sfpp -o build/test_aot_01
+          ./build/test_aot_01
+
+      - name: Verify Standalone AOT Compilation (Windows)
+        if: runner.os == 'Windows'
+        run: |
+          .\build\combust.exe --compile tests\01_arithmetic.sfpp -o build\test_aot_01.exe
+          .\build\test_aot_01.exe
 
       - name: Run Performance Benchmarks (Linux / macOS)
         if: runner.os != 'Windows'
         run: |
           ./build/sfpm bench
-
-      - name: Run Test Suite (Windows)
-        if: runner.os == 'Windows'
-        run: |
-          .\build\combust.exe tests/01_arithmetic.sfpp
-          .\build\combust.exe tests/24_fuzzing_and_robustness.sfpp
-          .\build\sfpm.exe test
 
       - name: Run Performance Benchmarks (Windows)
         if: runner.os == 'Windows'
@@ -76,11 +103,10 @@ jobs:
 
       - name: Upload Release Binaries
         if: github.event_name == 'release'
-        uses: actions/upload-release-asset@v1
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            ./build/combust
+            ./build/sfpm
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          upload_url: ${{ github.event.release.upload_url }}
-          asset_path: ./build/combust
-          asset_name: sulfur-combust-${{ matrix.os }}
-          asset_content_type: application/octet-stream
