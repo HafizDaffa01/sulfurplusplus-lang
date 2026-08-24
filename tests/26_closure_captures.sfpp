@@ -1,0 +1,85 @@
+import std/io as io;
+
+fn assert(cond, name) {
+    if (!cond) {
+        io.Terminal.Out << "FAIL: " << name << "\n";
+        throw "Assertion failed: " + name;
+    }
+    io.Terminal.Out << "PASS: " << name << "\n";
+}
+
+// ---------------------------------------------------------------------------
+// 1. Basic Enclosing Scope Capture
+// ---------------------------------------------------------------------------
+fn makeAdder(x) {
+    return fn(y) {
+        return x + y;
+    };
+}
+
+var add10 = makeAdder(10);
+var add25 = makeAdder(25);
+
+assert(add10(5) == 15, "Basic closure capture (add10 + 5)");
+assert(add10(20) == 30, "Basic closure capture (add10 + 20)");
+assert(add25(5) == 30, "Independent closure capture environment (add25 + 5)");
+
+// ---------------------------------------------------------------------------
+// 2. Multi-level Enclosing Scope Capture (Nested Closures)
+// ---------------------------------------------------------------------------
+fn outer(a) {
+    return fn(b) {
+        return fn(c) {
+            return a + b + c;
+        };
+    };
+}
+
+var f1 = outer(100);
+var f2 = f1(20);
+assert(f2(3) == 123, "Multi-level 3-tier nested closure capture");
+
+// ---------------------------------------------------------------------------
+// 3. Mutable Enclosing Variable State Persistence
+// ---------------------------------------------------------------------------
+fn makeCounter(start) {
+    var count = start;
+    return fn() {
+        count = count + 1;
+        return count;
+    };
+}
+
+var counterA = makeCounter(0);
+assert(counterA() == 1, "Mutable capture increment 1");
+assert(counterA() == 2, "Mutable capture increment 2");
+assert(counterA() == 3, "Mutable capture increment 3");
+
+var counterB = makeCounter(100);
+assert(counterB() == 101, "Separate counter instance initial increment");
+assert(counterA() == 4, "First counter instance isolated state");
+
+// ---------------------------------------------------------------------------
+// 4. Multiple Closures Sharing Same Enclosing Scope
+// ---------------------------------------------------------------------------
+fn makeSharedAccount(initialBalance) {
+    var balance = initialBalance;
+    var deposit = fn(amount) {
+        balance = balance + amount;
+        return balance;
+    };
+    var withdraw = fn(amount) {
+        balance = balance - amount;
+        return balance;
+    };
+    return {
+        "deposit": deposit,
+        "withdraw": withdraw
+    };
+}
+
+var acc = makeSharedAccount(500);
+assert(acc["deposit"](150) == 650, "Shared enclosure state after deposit");
+assert(acc["withdraw"](200) == 450, "Shared enclosure state after withdraw");
+
+io.Terminal.Out << "All Closure Capture tests passed successfully!\n";
