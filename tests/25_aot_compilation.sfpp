@@ -1,0 +1,116 @@
+import std/io as io;
+import std/math as math;
+import std/string as string;
+
+fn assert(cond, name) {
+    if (!cond) {
+        io.Terminal.Out << "FAIL: " << name << "\n";
+        throw "Assertion failed: " + name;
+    }
+    io.Terminal.Out << "PASS: " << name << "\n";
+}
+
+// ---------------------------------------------------------------------------
+// 1. Primitive Types & Arithmetic Operations (AOT Lowering)
+// ---------------------------------------------------------------------------
+var intVal = 42;
+var floatVal = 3.14159;
+var strVal = "Sulfur++ AOT Engine";
+var boolVal = true;
+
+assert(intVal + 8 == 50, "AOT Integer Arithmetic");
+assert(floatVal * 2.0 > 6.28, "AOT Floating Point Operations");
+assert(strVal == "Sulfur++ AOT Engine", "AOT String Constant Immutable Equality");
+assert(boolVal && (!false), "AOT Boolean Evaluation");
+
+// ---------------------------------------------------------------------------
+// 2. Control Flow & Loop Lowering
+// ---------------------------------------------------------------------------
+var sum = 0;
+var i = 1;
+while (i <= 10) {
+    sum = sum + i;
+    i = i + 1;
+}
+assert(sum == 55, "AOT While Loop Accumulation");
+
+var conditionalBranch = false;
+if (sum > 50) {
+    conditionalBranch = true;
+} else {
+    conditionalBranch = false;
+}
+assert(conditionalBranch, "AOT Conditional Branching");
+
+// ---------------------------------------------------------------------------
+// 3. Function Calls & Recursive Call Stack Lowering
+// ---------------------------------------------------------------------------
+fn factorial(n) {
+    if (n <= 1) {
+        return 1;
+    }
+    return n * factorial(n - 1);
+}
+
+fn fibonacci(n) {
+    if (n <= 0) { return 0; }
+    if (n == 1) { return 1; }
+    return fibonacci(n - 1) + fibonacci(n - 2);
+}
+
+assert(factorial(5) == 120, "AOT Recursive Factorial Lowering");
+assert(fibonacci(7) == 13, "AOT Recursive Fibonacci Call Stack");
+
+// ---------------------------------------------------------------------------
+// 4. Collection Handling (Lists & Maps) under AOT
+// ---------------------------------------------------------------------------
+var list = [10, 20, 30, 40, 50];
+assert(list[0] == 10, "AOT List Index Access");
+assert(list[4] == 50, "AOT List End Index Access");
+
+var map = {
+    "target": "AOT",
+    "version": 1,
+    "status": "ready"
+};
+assert(map["target"] == "AOT", "AOT Map Key Lookup");
+assert(map["version"] == 1, "AOT Map Value Inspection");
+
+// ---------------------------------------------------------------------------
+// 5. Object-Oriented Structures & Method Invocation
+// ---------------------------------------------------------------------------
+class AOTTarget {
+    name;
+    architecture;
+
+    fn init(n, arch) {
+        this.name = n;
+        this.architecture = arch;
+    }
+
+    fn getSpec() {
+        return this.name + "-" + this.architecture;
+    }
+}
+
+var targetObj = new AOTTarget("x86_64", "native");
+assert(targetObj.getSpec() == "x86_64-native", "AOT Class Instantiation & Method Calls");
+
+// ---------------------------------------------------------------------------
+// 6. STDLIB Integration (Math & String) in AOT Environment
+// ---------------------------------------------------------------------------
+assert(math.abs(-99) == 99, "AOT STDLIB Math Abs");
+assert(math.pow(2, 8) == 256, "AOT STDLIB Math Pow");
+
+// ---------------------------------------------------------------------------
+// 7. Exception Safety & Runtime Error Handling
+// ---------------------------------------------------------------------------
+var exceptionCaught = false;
+try {
+    throw "AOT Test Exception";
+} catch (err) {
+    exceptionCaught = true;
+}
+assert(exceptionCaught, "AOT Try-Catch Exception Propagation");
+
+io.Terminal.Out << "All AOT Compilation Feature tests passed successfully!\n";
